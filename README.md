@@ -1,3 +1,3 @@
-# FERI-DronePrep
+# FERI-DroneSigProc
 
-Preparation for Drone project in second and third year at FERI.
+Signal Processing for Drone project at Signals and Images (slo. Signali in Slike).
