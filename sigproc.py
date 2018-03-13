@@ -20,8 +20,9 @@ PyAudio = pyaudio.PyAudio
 
 
 class MainWindow(QWidget):
-    sig_sound_stop = pyqtSignal()
+    sig_sound_play_at = pyqtSignal(float)
     sig_sound_pause = pyqtSignal()
+    sig_sound_stop = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -32,6 +33,7 @@ class MainWindow(QWidget):
         self.subplots = []
         self.lines_click = []
         self.lines_over = []
+        self.lines_frame = []
         self.line_over = None
 
         self.sound_thread = None
@@ -67,8 +69,8 @@ class MainWindow(QWidget):
         # Graph space
         self.figure = Figure()
         FigureCanvas(self.figure)
-        # self.figure.canvas.mpl_connect("button_press_event", self.on_plot_click)
-        # self.figure.canvas.mpl_connect("motion_notify_event", self.on_plot_over)
+        self.figure.canvas.mpl_connect("button_press_event", self.on_plot_click)
+        self.figure.canvas.mpl_connect("motion_notify_event", self.on_plot_over)
 
         # Layout
         hbox_file = QHBoxLayout()
@@ -150,6 +152,8 @@ class MainWindow(QWidget):
         self.figure.canvas.draw()
 
     def on_plot_click(self, event):
+        self.sound_play(event.xdata)
+
         # Remove previous lines
         for line in self.lines_click:
             line.remove()
@@ -177,16 +181,33 @@ class MainWindow(QWidget):
                 self.lines_over.append(line)
                 self.plot_update(line, ax)
 
+    def plot_frame(self, x):
+        # Remove previous lines
+        for line in self.lines_frame:
+            line.remove()
+        self.lines_frame = []
+        # self.figure.canvas.draw_idle()  # TODO Still too slow
+
+        # Draw new lines
+        for ax in self.subplots:
+            line = ax.axvline(x, linewidth=1, color="blue")
+            self.lines_frame.append(line)
+            self.plot_update(line, ax)
+
     def plot_update(self, element, ax):
         ax.draw_artist(element)
         self.figure.canvas.blit(ax.bbox)
 
-    def sound_play(self):
-        if not self.sound_thread and self.is_signal_loaded():
-            self.sound_thread = SoundThread(self.sound, self.sound_mutex, self.sound_pause_cond)
-            self.sound_thread.finished.connect(self.on_sound_done)
-            self.sig_sound_stop.connect(self.sound_thread.stop)
+    def sound_play(self, start_at=0):
+        if self.sound_thread:
+            self.sig_sound_play_at.emit(start_at)
+        elif self.is_signal_loaded():
+            self.sound_thread = SoundThread(self.sound, start_at, self.sound_mutex, self.sound_pause_cond)
+            self.sig_sound_play_at.connect(self.sound_thread.play_at)
             self.sig_sound_pause.connect(self.sound_thread.pause)
+            self.sig_sound_stop.connect(self.sound_thread.stop)
+            self.sound_thread.sig_frame.connect(self.plot_frame)
+            self.sound_thread.finished.connect(self.on_sound_done)
             self.sound_thread.start()
             self.update_ui(True)
 
@@ -213,10 +234,14 @@ class MainWindow(QWidget):
 
 
 class SoundThread(QThread):
-    def __init__(self, sound, mutex, pause_cond):
+    sig_frame = pyqtSignal(float)
+
+    def __init__(self, sound, start_at, mutex, pause_cond):
         QThread.__init__(self)
 
         self.sound = sound
+        self.start_at = start_at
+        self.restart = True  # Start on True for first start
 
         self.running = True
         self.paused = False
@@ -234,20 +259,32 @@ class SoundThread(QThread):
             rate=self.sound.frame_rate,
             output=True)
 
-        # Break into 0.1 second chunks
-        for chunk in make_chunks(self.sound, 100):
-            if not self.running:
-                break
+        while self.restart:
+            self.restart = False
 
-            stream.write(chunk._data)
+            # Break into 0.05 second chunks
+            start = self.start_at * 1000
+            current_time = self.start_at
+            for chunk in make_chunks(self.sound[start:], 50):
+                if not self.running or self.restart:
+                    break
 
-            if self.paused:
-                self.mutex.lock()
-                self.pause_cond.wait(self.mutex)
-                self.mutex.unlock()
+                stream.write(chunk._data)
+
+                current_time += 0.05
+                self.sig_frame.emit(current_time)
+
+                if self.paused:
+                    self.mutex.lock()
+                    self.pause_cond.wait(self.mutex)
+                    self.mutex.unlock()
 
         stream.close()
         p.terminate()
+
+    def play_at(self, start_at=0):
+        self.start_at = start_at
+        self.restart = True
 
     def pause(self):  # Toggle
         self.paused = not self.paused
