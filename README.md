@@ -1,2 +1,3 @@
 # FERI-DronePrep
-Preparation for Done project in second and third year at FERI. 
+
+Preparation for Drone project in second and third year at FERI.
