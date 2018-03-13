@@ -10,3 +10,4 @@ Signal Processing for Drone project at Signals and Images (slo. Signali in Slike
 - [NumPy](https://github.com/numpy/numpy)
 - [matplotlib](https://github.com/matplotlib/matplotlib)
 - [pydub](https://github.com/jiaaro/pydub)
+- [PyAudio](http://people.csail.mit.edu/hubert/pyaudio/)
