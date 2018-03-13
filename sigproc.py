@@ -144,7 +144,7 @@ class MainWindow(QWidget):
             if i + 1 < sound.channels:
                 ax.get_xaxis().set_visible(False)
             # Display Y label somewhere in the middle
-            if i == int(sound.channels / 2) + 1:
+            if i == int(sound.channels / 2):
                 ax.set_ylabel("Amplitude")
             self.subplots.append(ax)
 
