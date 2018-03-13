@@ -10,15 +10,18 @@ import sys
 import numpy as np
 import pyaudio
 from pydub import AudioSegment, exceptions
+from pydub.utils import make_chunks
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from PyQt5.QtCore import QThread
+from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtWidgets import *
 
 PyAudio = pyaudio.PyAudio
 
 
 class MainWindow(QWidget):
+    sig_sound_stop = pyqtSignal()
+
     def __init__(self):
         super().__init__()
 
@@ -54,6 +57,7 @@ class MainWindow(QWidget):
 
         self.btn_stop = QPushButton("Stop")
         self.btn_stop.setDisabled(True)
+        self.btn_stop.clicked.connect(self.sound_stop)
 
         # Graph space
         self.figure = Figure()
@@ -174,22 +178,26 @@ class MainWindow(QWidget):
             print("sound thread already running!")
         else:
             if self.is_signal_loaded():
-                self.sound_thread = SoundThread(self.signal, self.sound)
-                self.sound_thread.finished.connect(self.sound_done)
+                self.sound_thread = SoundThread(self.sound)
+                self.sound_thread.finished.connect(self.on_sound_done)
+                self.sig_sound_stop.connect(self.sound_thread.stop)
                 self.sound_thread.start()
                 self.update_ui(True)
 
-    def sound_done(self):
+    def sound_stop(self):
+        self.sig_sound_stop.emit()
+
+    def on_sound_done(self):
         self.sound_thread = None
         self.update_ui(False)
 
 
 class SoundThread(QThread):
-    def __init__(self, signal, sound):
+    def __init__(self, sound):
         QThread.__init__(self)
 
-        self.signal = signal
         self.sound = sound
+        self.running = True
 
     def __del__(self):
         self.wait()
@@ -201,9 +209,20 @@ class SoundThread(QThread):
             channels=self.sound.channels,
             rate=self.sound.frame_rate,
             output=True)
-        stream.write(self.signal)
+
+        # Break into half-second chunks
+        for chunk in make_chunks(self.sound, 500):
+            if self.running:
+                stream.write(chunk._data)
+            else:
+                break
+
+        stream.stop_stream()
         stream.close()
         p.terminate()
+
+    def stop(self):
+        self.running = False
 
 
 if __name__ == "__main__":
