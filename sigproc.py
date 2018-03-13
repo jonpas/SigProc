@@ -34,10 +34,10 @@ class MainWindow(QWidget):
         self.lines_click = []
         self.lines_over = []
         self.lines_frame = []
-        self.line_over = None
 
         self.sound_thread = None
         self.sound_paused = False
+        self.sound_start_at = 0
 
         self.initUI()
 
@@ -113,8 +113,7 @@ class MainWindow(QWidget):
 
         try:
             self.sound = AudioSegment.from_file(file)
-            signal = self.sound.get_array_of_samples()
-            self.signal = np.array(signal)
+            self.signal = np.array(self.sound.get_array_of_samples())
         except exceptions.CouldntDecodeError:
             print("Failed to load signal!")
 
@@ -128,6 +127,8 @@ class MainWindow(QWidget):
         self.subplots = []
         self.lines_click = []
         self.lines_over = []
+        self.lines_frame = []
+        self.sound_start_at = 0
 
         # X axis as time in seconds
         time = np.linspace(0, sound.duration_seconds, num=len(signal))
@@ -152,13 +153,14 @@ class MainWindow(QWidget):
         self.figure.canvas.draw()
 
     def on_plot_click(self, event):
-        self.sound_play(event.xdata)
+        self.sound_start_at = event.xdata
+        self.sound_play()
 
         # Remove previous lines
         for line in self.lines_click:
             line.remove()
         self.lines_click = []
-        # self.figure.canvas.draw_idle()  # TODO Still too slow
+        self.figure.canvas.draw_idle()  # TODO Still too slow
 
         # Draw new lines
         if event.xdata is not None and event.ydata is not None:
@@ -168,11 +170,13 @@ class MainWindow(QWidget):
                 self.plot_update(line, ax)
 
     def on_plot_over(self, event):
+        return  # Disabled due to performance issues for now
+
         # Remove previous lines
         for line in self.lines_over:
             line.remove()
         self.lines_over = []
-        # self.figure.canvas.draw_idle()  # TODO Still too slow
+        self.figure.canvas.draw_idle()  # TODO Still too slow
 
         if event.xdata is not None and event.ydata is not None:
             # Draw new lines
@@ -186,7 +190,7 @@ class MainWindow(QWidget):
         for line in self.lines_frame:
             line.remove()
         self.lines_frame = []
-        # self.figure.canvas.draw_idle()  # TODO Still too slow
+        self.figure.canvas.draw_idle()  # TODO Still too slow
 
         # Draw new lines
         for ax in self.subplots:
@@ -198,11 +202,11 @@ class MainWindow(QWidget):
         ax.draw_artist(element)
         self.figure.canvas.blit(ax.bbox)
 
-    def sound_play(self, start_at=0):
+    def sound_play(self):
         if self.sound_thread:
-            self.sig_sound_play_at.emit(start_at)
+            self.sig_sound_play_at.emit(self.sound_start_at)
         elif self.is_signal_loaded():
-            self.sound_thread = SoundThread(self.sound, start_at, self.sound_mutex, self.sound_pause_cond)
+            self.sound_thread = SoundThread(self.sound, self.sound_start_at, self.sound_mutex, self.sound_pause_cond)
             self.sig_sound_play_at.connect(self.sound_thread.play_at)
             self.sig_sound_pause.connect(self.sound_thread.pause)
             self.sig_sound_stop.connect(self.sound_thread.stop)
@@ -262,16 +266,17 @@ class SoundThread(QThread):
         while self.restart:
             self.restart = False
 
-            # Break into 0.05 second chunks
+            # Break into 0.5 second chunks
+            # TODO Change to 0.05 second chunks when plotting performance is improved
             start = self.start_at * 1000
             current_time = self.start_at
-            for chunk in make_chunks(self.sound[start:], 50):
+            for chunk in make_chunks(self.sound[start:], 500):
                 if not self.running or self.restart:
                     break
 
                 stream.write(chunk._data)
 
-                current_time += 0.05
+                current_time += 0.5
                 self.sig_frame.emit(current_time)
 
                 if self.paused:
