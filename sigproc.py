@@ -12,9 +12,8 @@ import pyaudio
 from pydub import AudioSegment, exceptions
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from PyQt5.QtCore import QThread
 from PyQt5.QtWidgets import *
-from PyQt5.QtGui import *
-from PyQt5.QtCore import *
 
 PyAudio = pyaudio.PyAudio
 
@@ -30,6 +29,8 @@ class MainWindow(QWidget):
         self.lines_click = []
         self.lines_over = []
         self.line_over = None
+
+        self.sound_thread = None
 
         self.initUI()
 
@@ -57,8 +58,8 @@ class MainWindow(QWidget):
         # Graph space
         self.figure = Figure()
         FigureCanvas(self.figure)
-        self.figure.canvas.mpl_connect("button_press_event", self.on_plot_click)
-        self.figure.canvas.mpl_connect("motion_notify_event", self.on_plot_over)
+        # self.figure.canvas.mpl_connect("button_press_event", self.on_plot_click)
+        # self.figure.canvas.mpl_connect("motion_notify_event", self.on_plot_over)
 
         # Layout
         hbox_file = QHBoxLayout()
@@ -77,13 +78,13 @@ class MainWindow(QWidget):
         # Window
         self.setLayout(vbox)
         self.setGeometry(300, 300, 1000, 500)
-        self.setWindowTitle("Audio Visualizer")
+        self.setWindowTitle("Signal Processor")
         self.show()
 
     def update_ui(self, block):
-        self.btn_pause.setDisabled(block)
+        self.btn_pause.setDisabled(not block)
         self.btn_play.setDisabled(block)
-        self.btn_stop.setDisabled(block)
+        self.btn_stop.setDisabled(not block)
 
     def show_file_dialog(self):
         fname = QFileDialog.getOpenFileName(self, "Select file")
@@ -137,10 +138,13 @@ class MainWindow(QWidget):
         self.figure.canvas.draw()
 
     def on_plot_click(self, event):
+        # Remove previous lines
         for line in self.lines_click:
             line.remove()
         self.lines_click = []
-        self.figure.canvas.draw_idle()  # TODO Still too slow
+        # self.figure.canvas.draw_idle()  # TODO Still too slow
+
+        # Draw new lines
         if event.xdata is not None and event.ydata is not None:
             for ax in self.subplots:
                 line = ax.axvline(event.xdata, linewidth=1, color="black")
@@ -148,13 +152,14 @@ class MainWindow(QWidget):
                 self.plot_update(line, ax)
 
     def on_plot_over(self, event):
-        # Remove vertical lines
+        # Remove previous lines
         for line in self.lines_over:
             line.remove()
         self.lines_over = []
-        self.figure.canvas.draw_idle()  # TODO Still too slow
+        # self.figure.canvas.draw_idle()  # TODO Still too slow
+
         if event.xdata is not None and event.ydata is not None:
-            # Add vertical lines
+            # Draw new lines
             for ax in self.subplots:
                 line = ax.axvline(event.xdata, linewidth=1, color="grey")
                 self.lines_over.append(line)
@@ -165,16 +170,40 @@ class MainWindow(QWidget):
         self.figure.canvas.blit(ax.bbox)
 
     def sound_play(self):
-        if self.is_signal_loaded():
-            p = PyAudio()
-            stream = p.open(
-                format=p.get_format_from_width(self.sound.sample_width),
-                channels=self.sound.channels,
-                rate=self.sound.frame_rate,
-                output=True)
-            stream.write(self.signal)
-            stream.close()
-            p.terminate()
+        if self.sound_thread:
+            print("sound thread already running!")
+        else:
+            if self.is_signal_loaded():
+                self.sound_thread = SoundThread(self.signal, self.sound)
+                self.sound_thread.finished.connect(self.sound_done)
+                self.sound_thread.start()
+                self.update_ui(True)
+
+    def sound_done(self):
+        self.sound_thread = None
+        self.update_ui(False)
+
+
+class SoundThread(QThread):
+    def __init__(self, signal, sound):
+        QThread.__init__(self)
+
+        self.signal = signal
+        self.sound = sound
+
+    def __del__(self):
+        self.wait()
+
+    def run(self):
+        p = PyAudio()
+        stream = p.open(
+            format=p.get_format_from_width(self.sound.sample_width),
+            channels=self.sound.channels,
+            rate=self.sound.frame_rate,
+            output=True)
+        stream.write(self.signal)
+        stream.close()
+        p.terminate()
 
 
 if __name__ == "__main__":
