@@ -7,6 +7,7 @@ Requirements:
 """
 
 import sys
+import itertools
 import numpy as np
 import pyaudio
 from pydub import AudioSegment, exceptions
@@ -127,12 +128,12 @@ class MainWindow(QWidget):
     def plot(self, signal, sound):
         self.figure.clear()
         self.subplots = []
-        self.lines_click = []
-        self.lines_click_pos = 0
-        self.lines_over = []
-        self.lines_over_pos = 0
-        self.lines_frame = []
-        self.lines_frame_pos = 0
+        self.lclick = []
+        self.lclick_pos = 0
+        self.lover = []
+        self.lover_pos = 0
+        self.lframe = []
+        self.lframe_pos = 0
         self.sound_start_at = 0
 
         # X axis as time in seconds
@@ -157,11 +158,15 @@ class MainWindow(QWidget):
 
             # Create lines (for later use, hidden until first update)
             line = ax.axvline(0, linewidth=1, color="black")
-            self.lines_click.append(line)
+            self.lclick.append(line)
             line = ax.axvline(0, linewidth=1, color="grey")
-            self.lines_over.append(line)
+            self.lover.append(line)
             line = ax.axvline(0, linewidth=1, color="blue")
-            self.lines_frame.append(line)
+            self.lframe.append(line)
+
+            # Handle zoom/pan events
+            ax.callbacks.connect("xlim_changed", self.on_plot_change)
+            ax.callbacks.connect("ylim_changed", self.on_plot_change)
 
         self.figure.subplots_adjust(hspace=0.0)
         ax.set_xlabel("Time (s)")
@@ -169,6 +174,19 @@ class MainWindow(QWidget):
 
         # Save background for updating on the fly
         self.plotbackground = self.figure.canvas.copy_from_bbox(self.figure.bbox)
+
+    def on_plot_change(self, axes):
+        # Hide all lines to not save them as part of background
+        for line in itertools.chain(self.lclick, self.lover, self.lframe):
+            line.set_visible(False)
+
+        # Redraw and resave new layout background
+        self.figure.canvas.draw()
+        self.plotbackground = self.figure.canvas.copy_from_bbox(self.figure.bbox)
+
+        # Reshow all lines
+        for line in itertools.chain(self.lclick, self.lover, self.lframe):
+            line.set_visible(True)
 
     def is_plotnav_active(self):
         return self.plotnav._active is None
@@ -182,7 +200,7 @@ class MainWindow(QWidget):
             self.sound_play()
 
             # Update lines
-            self.lines_click_pos = event.xdata
+            self.lclick_pos = event.xdata
             self.plot_update()
 
     def on_plot_over(self, event):
@@ -191,28 +209,27 @@ class MainWindow(QWidget):
 
         # Update lines
         if event.xdata is not None and event.ydata is not None:
-            self.lines_over_pos = event.xdata
+            self.lover_pos = event.xdata
         else:
-            self.lines_over_pos = 0
+            self.lover_pos = 0
 
         if self.plotbackground:
             self.plot_update()
 
     def plot_frame(self, x):
         # Update lines
-        self.lines_frame_pos = x
+        self.lframe_pos = x
         self.plot_update()
 
     def plot_update(self):
         self.figure.canvas.restore_region(self.plotbackground)
-        for ax in self.subplots:
-            for line_click, line_over, line_frame in zip(self.lines_click, self.lines_over, self.lines_frame):
-                line_click.set_xdata([self.lines_click_pos])
-                line_over.set_xdata([self.lines_over_pos])
-                line_frame.set_xdata([self.lines_frame_pos])
-                ax.draw_artist(line_click)
-                ax.draw_artist(line_over)
-                ax.draw_artist(line_frame)
+        for i, (lclick, lover, lframe) in enumerate(zip(self.lclick, self.lover, self.lframe)):
+            lclick.set_xdata([self.lclick_pos])
+            lover.set_xdata([self.lover_pos])
+            lframe.set_xdata([self.lframe_pos])
+            self.subplots[i].draw_artist(lclick)
+            self.subplots[i].draw_artist(lover)
+            self.subplots[i].draw_artist(lframe)
         self.figure.canvas.blit(self.figure.bbox)
 
     def sound_play(self):
