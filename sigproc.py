@@ -15,7 +15,7 @@ from pydub.utils import make_chunks
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
-from PyQt5.QtCore import QThread, pyqtSignal, QMutex, QWaitCondition
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QMutex, QWaitCondition
 from PyQt5.QtWidgets import *
 
 PyAudio = pyaudio.PyAudio
@@ -41,14 +41,14 @@ class MainWindow(QWidget):
         self.initUI()
 
     def initUI(self):
+        spacer = QSpacerItem(50, 0, QSizePolicy.Minimum)
+
         # File selector
         lbl_file = QLabel("File:")
         self.txt_file = QLineEdit()
         self.txt_file.setPlaceholderText("Select file ...")
         btn_file = QPushButton("Select")
         btn_file.clicked.connect(self.show_file_dialog)
-
-        spacer = QSpacerItem(100, 0, QSizePolicy.Minimum)
 
         # Audio controls
         self.btn_pause = QPushButton("Pause")
@@ -65,6 +65,30 @@ class MainWindow(QWidget):
         self.btn_stop.setDisabled(True)
         self.btn_stop.clicked.connect(self.sound_stop)
 
+        # Doppler Shift simulation
+        cb_source_speed = QComboBox()
+        cb_source_speed.setToolTip("Source speed")
+        cb_source_speed.addItems(["20 km/h", "50 km/h", "100 km/h", "250 km/h", "500 km/h"])
+        self.source_speeds = [20, 50, 100, 250, 500]  # Same indexes as text above
+        btn_doppler = QPushButton("Simulate Doppler Shift")
+
+        # Effects
+        btn_effect = QPushButton("Apply Effect")
+        # self.btn_effects.clicked.connect(self.effect_select)
+
+        # Recording
+        cb_sample_rate = QComboBox()
+        cb_sample_rate.setToolTip("Sampling rate")
+        cb_sample_rate.addItems(["8.000 Hz", "11.025 Hz", "22.050 Hz", "44.100 Hz"])
+        self.sampling_rates = [8000, 11025, 22050, 44100]  # Same indexes as text above
+        btn_record = QPushButton("Record")
+        # self.btn_record.clicked.connect(self.sound_record)
+
+        cb_bit_depth = QComboBox()
+        cb_bit_depth.setToolTip("Bit depth")
+        cb_bit_depth.addItems(["8 b", "16 b"])
+        self.bit_depths = [pyaudio.paInt8, pyaudio.paInt16]  # Same indexes as text above
+
         # Graph space
         self.figure = Figure()
         FigureCanvas(self.figure)
@@ -72,23 +96,38 @@ class MainWindow(QWidget):
         self.figure.canvas.mpl_connect("button_press_event", self.on_plot_click)
         self.figure.canvas.mpl_connect("motion_notify_event", self.on_plot_over)
 
+        # Graph toolbar
         self.plotnav = NavigationToolbar(self.figure.canvas, self.figure.canvas)
         self.plotnav.setStyleSheet("QToolBar { border: 0px }")
+        self.plotnav.setOrientation(Qt.Vertical)
 
         # Layout
-        hbox_file = QHBoxLayout()
-        hbox_file.addWidget(lbl_file)
-        hbox_file.addWidget(self.txt_file)
-        hbox_file.addWidget(btn_file)
-        hbox_file.addSpacerItem(spacer)
-        hbox_file.addWidget(self.btn_pause)
-        hbox_file.addWidget(self.btn_play)
-        hbox_file.addWidget(self.btn_stop)
+        hbox_top = QHBoxLayout()
+        hbox_top.addWidget(lbl_file)
+        hbox_top.addWidget(self.txt_file)
+        hbox_top.addWidget(btn_file)
+        hbox_top.addStretch()
+        hbox_top.addSpacerItem(spacer)
+        hbox_top.addWidget(self.btn_pause)
+        hbox_top.addWidget(self.btn_play)
+        hbox_top.addWidget(self.btn_stop)
+
+        hbox_bot = QHBoxLayout()
+        hbox_bot.addWidget(cb_source_speed)
+        hbox_bot.addWidget(btn_doppler)
+        hbox_bot.addStretch()
+        hbox_bot.addSpacerItem(spacer)
+        hbox_bot.addWidget(btn_effect)
+        hbox_bot.addStretch()
+        hbox_bot.addSpacerItem(spacer)
+        hbox_bot.addWidget(cb_sample_rate)
+        hbox_bot.addWidget(cb_bit_depth)
+        hbox_bot.addWidget(btn_record)
 
         vbox = QVBoxLayout()
-        vbox.addLayout(hbox_file)
+        vbox.addLayout(hbox_top)
         vbox.addWidget(self.figure.canvas)
-        vbox.addWidget(self.plotnav)
+        vbox.addLayout(hbox_bot)
 
         # Window
         self.setLayout(vbox)
@@ -100,6 +139,7 @@ class MainWindow(QWidget):
     def resizeEvent(self, resizeEvent):
         if self.is_signal_loaded():
             self.on_plot_change(None)
+        self.plotnav.move(self.width() - 55, 0)
 
     def update_ui(self, block):
         self.btn_pause.setDisabled(not block)
