@@ -31,10 +31,7 @@ class MainWindow(QWidget):
         self.sound = None
         self.signal = None
 
-        self.subplots = []
-        self.lines_click = []
-        self.lines_over = []
-        self.lines_frame = []
+        self.plotbackground = None
 
         self.sound_thread = None
         self.sound_paused = False
@@ -131,8 +128,11 @@ class MainWindow(QWidget):
         self.figure.clear()
         self.subplots = []
         self.lines_click = []
+        self.lines_click_pos = 0
         self.lines_over = []
+        self.lines_over_pos = 0
         self.lines_frame = []
+        self.lines_frame_pos = 0
         self.sound_start_at = 0
 
         # X axis as time in seconds
@@ -141,6 +141,7 @@ class MainWindow(QWidget):
         for i in range(0, sound.channels):
             ax = self.figure.add_subplot(sound.channels, 1, i + 1)
             samples = sound.get_array_of_samples()  # [samp1L, samp1R, samp2L, samp2R]
+
             # Plot current channel, slicing it away
             ax.plot(time[i::sound.channels], samples[i::sound.channels])
             ax.margins(x=0)
@@ -151,11 +152,23 @@ class MainWindow(QWidget):
             # Display Y label somewhere in the middle
             if i == int(sound.channels / 2):
                 ax.set_ylabel("Amplitude")
+
             self.subplots.append(ax)
 
-        self.figure.subplots_adjust(hspace=.0)
+            # Create lines (for later use, hidden until first update)
+            line = ax.axvline(0, linewidth=1, color="black")
+            self.lines_click.append(line)
+            line = ax.axvline(0, linewidth=1, color="grey")
+            self.lines_over.append(line)
+            line = ax.axvline(0, linewidth=1, color="blue")
+            self.lines_frame.append(line)
+
+        self.figure.subplots_adjust(hspace=0.0)
         ax.set_xlabel("Time (s)")
         self.figure.canvas.draw()
+
+        # Save background for updating on the fly
+        self.plotbackground = self.figure.canvas.copy_from_bbox(self.figure.bbox)
 
     def is_plotnav_active(self):
         return self.plotnav._active is None
@@ -164,59 +177,43 @@ class MainWindow(QWidget):
         if not self.is_plotnav_active():
             return
 
-        # Remove previous lines
-        for line in self.lines_click:
-            line.remove()
-        self.lines_click = []
-        self.figure.canvas.draw_idle()  # TODO Still too slow
-
-        # Draw new lines
         if event.xdata is not None and event.ydata is not None:
             self.sound_start_at = event.xdata
             self.sound_play()
-            for ax in self.subplots:
-                line = ax.axvline(event.xdata, linewidth=1, color="black")
-                self.lines_click.append(line)
-                self.plot_update(line, ax)
+
+            # Update lines
+            self.lines_click_pos = event.xdata
+            self.plot_update()
 
     def on_plot_over(self, event):
         if not self.is_plotnav_active():
             return
 
-        return  # Disabled due to performance issues for now
-
-        # Remove previous lines
-        for line in self.lines_over:
-            line.remove()
-        self.lines_over = []
-        self.figure.canvas.draw_idle()  # TODO Still too slow
-
+        # Update lines
         if event.xdata is not None and event.ydata is not None:
-            # Draw new lines
-            for ax in self.subplots:
-                line = ax.axvline(event.xdata, linewidth=1, color="grey")
-                self.lines_over.append(line)
-                self.plot_update(line, ax)
+            self.lines_over_pos = event.xdata
+        else:
+            self.lines_over_pos = 0
+
+        if self.plotbackground:
+            self.plot_update()
 
     def plot_frame(self, x):
-        if not self.is_plotnav_active():
-            return
+        # Update lines
+        self.lines_frame_pos = x
+        self.plot_update()
 
-        # Remove previous lines
-        for line in self.lines_frame:
-            line.remove()
-        self.lines_frame = []
-        self.figure.canvas.draw_idle()  # TODO Still too slow
-
-        # Draw new lines
+    def plot_update(self):
+        self.figure.canvas.restore_region(self.plotbackground)
         for ax in self.subplots:
-            line = ax.axvline(x, linewidth=1, color="blue")
-            self.lines_frame.append(line)
-            self.plot_update(line, ax)
-
-    def plot_update(self, element, ax):
-        ax.draw_artist(element)
-        self.figure.canvas.blit(ax.bbox)
+            for line_click, line_over, line_frame in zip(self.lines_click, self.lines_over, self.lines_frame):
+                line_click.set_xdata([self.lines_click_pos])
+                line_over.set_xdata([self.lines_over_pos])
+                line_frame.set_xdata([self.lines_frame_pos])
+                ax.draw_artist(line_click)
+                ax.draw_artist(line_over)
+                ax.draw_artist(line_frame)
+        self.figure.canvas.blit(self.figure.bbox)
 
     def sound_play(self):
         if self.sound_thread:
@@ -283,16 +280,15 @@ class SoundThread(QThread):
             self.restart = False
 
             # Break into 0.5 second chunks
-            # TODO Change to 0.05 second chunks when plotting performance is improved
             start = self.start_at * 1000
             current_time = self.start_at
-            for chunk in make_chunks(self.sound[start:], 500):
+            for chunk in make_chunks(self.sound[start:], 50):
                 if not self.running or self.restart:
                     break
 
                 stream.write(chunk._data)
 
-                current_time += 0.5
+                current_time += 0.05
                 self.sig_frame.emit(current_time)
 
                 if self.paused:
