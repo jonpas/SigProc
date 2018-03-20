@@ -72,7 +72,7 @@ class MainWindow(QWidget):
         self.figure.canvas.mpl_connect("button_press_event", self.on_plot_click)
         self.figure.canvas.mpl_connect("motion_notify_event", self.on_plot_over)
 
-        self.plotnav = NavigationToolbar(self.figure.canvas, self.figure.canvas)  # , coordinates=False)
+        self.plotnav = NavigationToolbar(self.figure.canvas, self.figure.canvas)
         self.plotnav.setStyleSheet("QToolBar { border: 0px }")
 
         # Layout
