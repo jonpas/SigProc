@@ -12,6 +12,7 @@ import pyaudio
 from pydub import AudioSegment, exceptions
 from pydub.utils import make_chunks
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 from PyQt5.QtCore import QThread, pyqtSignal, QMutex, QWaitCondition
 from PyQt5.QtWidgets import *
@@ -72,6 +73,9 @@ class MainWindow(QWidget):
         self.figure.canvas.mpl_connect("button_press_event", self.on_plot_click)
         self.figure.canvas.mpl_connect("motion_notify_event", self.on_plot_over)
 
+        self.plotnav = NavigationToolbar(self.figure.canvas, self.figure.canvas)  # , coordinates=False)
+        self.plotnav.setStyleSheet("QToolBar { border: 0px }")
+
         # Layout
         hbox_file = QHBoxLayout()
         hbox_file.addWidget(lbl_file)
@@ -85,6 +89,7 @@ class MainWindow(QWidget):
         vbox = QVBoxLayout()
         vbox.addLayout(hbox_file)
         vbox.addWidget(self.figure.canvas)
+        vbox.addWidget(self.plotnav)
 
         # Window
         self.setLayout(vbox)
@@ -152,9 +157,12 @@ class MainWindow(QWidget):
         ax.set_xlabel("Time (s)")
         self.figure.canvas.draw()
 
+    def is_plotnav_active(self):
+        return self.plotnav._active is None
+
     def on_plot_click(self, event):
-        self.sound_start_at = event.xdata
-        self.sound_play()
+        if not self.is_plotnav_active():
+            return
 
         # Remove previous lines
         for line in self.lines_click:
@@ -164,12 +172,17 @@ class MainWindow(QWidget):
 
         # Draw new lines
         if event.xdata is not None and event.ydata is not None:
+            self.sound_start_at = event.xdata
+            self.sound_play()
             for ax in self.subplots:
                 line = ax.axvline(event.xdata, linewidth=1, color="black")
                 self.lines_click.append(line)
                 self.plot_update(line, ax)
 
     def on_plot_over(self, event):
+        if not self.is_plotnav_active():
+            return
+
         return  # Disabled due to performance issues for now
 
         # Remove previous lines
@@ -186,6 +199,9 @@ class MainWindow(QWidget):
                 self.plot_update(line, ax)
 
     def plot_frame(self, x):
+        if not self.is_plotnav_active():
+            return
+
         # Remove previous lines
         for line in self.lines_frame:
             line.remove()
