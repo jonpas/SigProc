@@ -100,6 +100,7 @@ class MainWindow(QWidget):
         self.btn_pause.setText("Resume" if self.sound_paused else "Pause")
         self.btn_play.setDisabled(block)
         self.btn_stop.setDisabled(not block)
+        self.plotnav.setDisabled(self.is_sound_playing())
 
     def show_file_dialog(self):
         fname = QFileDialog.getOpenFileName(self, "Select file")
@@ -156,14 +157,6 @@ class MainWindow(QWidget):
 
             self.subplots.append(ax)
 
-            # Create lines (for later use, hidden until first update)
-            line = ax.axvline(0, linewidth=1, color="black")
-            self.lclick.append(line)
-            line = ax.axvline(0, linewidth=1, color="grey")
-            self.lover.append(line)
-            line = ax.axvline(0, linewidth=1, color="blue")
-            self.lframe.append(line)
-
             # Handle zoom/pan events
             ax.callbacks.connect("xlim_changed", self.on_plot_change)
             ax.callbacks.connect("ylim_changed", self.on_plot_change)
@@ -174,6 +167,15 @@ class MainWindow(QWidget):
 
         # Save background for updating on the fly
         self.plotbackground = self.figure.canvas.copy_from_bbox(self.figure.bbox)
+
+        # Create lines (for later use, hidden until first update)
+        for ax in self.subplots:
+            line = ax.axvline(0, linewidth=1, color="black")
+            self.lclick.append(line)
+            line = ax.axvline(0, linewidth=1, color="grey")
+            self.lover.append(line)
+            line = ax.axvline(0, linewidth=1, color="blue")
+            self.lframe.append(line)
 
     def on_plot_change(self, axes):
         # Hide all lines to not save them as part of background
@@ -244,6 +246,9 @@ class MainWindow(QWidget):
             self.sound_thread.finished.connect(self.on_sound_done)
             self.sound_thread.start()
             self.update_ui(True)
+
+    def is_sound_playing(self):
+        return self.sound_thread is not None and not self.sound_paused
 
     def sound_stop(self):
         self.sig_sound_stop.emit()
