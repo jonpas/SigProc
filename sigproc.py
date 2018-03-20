@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
 
-"""
-Requirements:
-- numpy, pydub, matplotlib, PyQt5 Python packages
-- ffmpeg installed on system
-"""
-
 import sys
 import itertools
 import numpy as np
