@@ -68,6 +68,7 @@ class MainWindow(QWidget):
         # Graph space
         self.figure = Figure()
         FigureCanvas(self.figure)
+        self.figure.canvas.setMinimumHeight(400)
         self.figure.canvas.mpl_connect("button_press_event", self.on_plot_click)
         self.figure.canvas.mpl_connect("motion_notify_event", self.on_plot_over)
 
@@ -94,6 +95,11 @@ class MainWindow(QWidget):
         self.setGeometry(300, 300, 1000, 500)
         self.setWindowTitle("Signal Processor")
         self.show()
+
+    # Overriden resize event
+    def resizeEvent(self, resizeEvent):
+        if self.is_signal_loaded():
+            self.on_plot_change(None)
 
     def update_ui(self, block):
         self.btn_pause.setDisabled(not block)
@@ -215,7 +221,7 @@ class MainWindow(QWidget):
         else:
             self.lover_pos = 0
 
-        if self.plotbackground:
+        if self.plotbackground is not None:
             self.plot_update()
 
     def plot_frame(self, x):
