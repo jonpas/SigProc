@@ -1,6 +1,6 @@
 # FERI-SigProc
 
-Signal Processing application at Signals and Images (slo. Signali in Slike).
+Signal Processing application at Signals and Images (slo. Signali in Slike)
 
 ### Setup
 
