@@ -1,6 +1,6 @@
-# FERI-DroneSigProc
+# FERI-SigProc
 
-Signal Processing for Drone project at Signals and Images (slo. Signali in Slike).
+Signal Processing application at Signals and Images (slo. Signali in Slike).
 
 ### Setup
 
