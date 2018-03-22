@@ -310,6 +310,8 @@ class MainWindow(QWidget):
     def on_sound_done(self):
         self.sound_thread = None
         self.update_ui(False)
+        self.lframe_pos = 0
+        self.plot_update()
 
 
 class SoundThread(QThread):
