@@ -240,6 +240,7 @@ class MainWindow(QWidget):
         if event.xdata is not None and event.ydata is not None:
             self.sound_start_at = event.xdata
             self.sound_play()
+            self.update_ui(True)
 
             # Update lines
             self.lclick_pos = event.xdata
