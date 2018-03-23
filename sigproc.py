@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
+import os
 import itertools
 import numpy as np
 import pyaudio
@@ -75,8 +76,18 @@ class MainWindow(QWidget):
         self.btn_doppler = QPushButton("Simulate Doppler Shift")
 
         # Effects
+        self.cb_effect = QComboBox()
+        self.cb_effect.setToolTip("Preset effects")
+        self.effects = []
+        for root, dirs, files in os.walk("resources/impulses"):
+            for file in files:
+                if file.endswith(".wav") or file.endswith(".mp3"):
+                    self.cb_effect.addItem(file.split(".")[0])
+                    self.effects.append(os.path.join(root, file))
         self.btn_effect = QPushButton("Apply Effect")
-        # self.btn_effect.clicked.connect(self.effect_select)
+        self.btn_effect.clicked.connect(self.effect_apply)
+        self.btn_effect_load = QPushButton("Load Effect")
+        self.btn_effect_load.clicked.connect(self.effect_load)
 
         # Recording
         self.cb_sample_rate = QComboBox()
@@ -122,7 +133,9 @@ class MainWindow(QWidget):
         hbox_bot.addWidget(self.btn_doppler)
         hbox_bot.addStretch()
         hbox_bot.addSpacerItem(spacer)
+        hbox_bot.addWidget(self.cb_effect)
         hbox_bot.addWidget(self.btn_effect)
+        hbox_bot.addWidget(self.btn_effect_load)
         hbox_bot.addStretch()
         hbox_bot.addSpacerItem(spacer)
         hbox_bot.addWidget(self.cb_sample_rate)
@@ -157,7 +170,9 @@ class MainWindow(QWidget):
         self.plotnav.setDisabled(self.playing and not self.sound_paused)
 
         self.btn_doppler.setDisabled(self.playing or self.sound_paused)
+
         self.btn_effect.setDisabled(self.playing or self.sound_paused)
+        self.btn_effect_load.setDisabled(self.playing or self.sound_paused)
 
         self.btn_record.setDisabled(self.playing or self.sound_paused)
         self.btn_record.setText("Stop" if self.recording else "Record")
@@ -208,6 +223,24 @@ class MainWindow(QWidget):
             channels=channels)
         self.signal = np.array(self.sound.get_array_of_samples())
         self.plot(self.signal, self.sound)
+
+    def effect_load(self):
+        feffect = self.effects[self.cb_effect.currentIndex()]
+        if self.load_sound(feffect):
+            self.txt_file.setText(feffect)
+            self.plot(self.signal, self.sound)
+
+    def effect_apply(self):
+        print("apply effect: {}".format(feffect))
+        feffect = self.effects[self.cb_effect.currentIndex()]
+        try:
+            effect_sound = AudioSegment.from_file(feffect)
+            effect_signal = np.array(effect_sound.get_array_of_samples())
+        except exceptions.CouldntDecodeError:
+            print("Failed to load effect!")
+
+        # Convolute self.signal with effect_signal
+        # Load resulting signal via self.load_signal()
 
     def plot(self, signal, sound):
         self.figure.clear()
