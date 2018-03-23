@@ -42,7 +42,12 @@ class MainWindow(QWidget):
         self.txt_file = QLineEdit()
         self.txt_file.setPlaceholderText("Select file ...")
         btn_file = QPushButton("Select")
-        btn_file.clicked.connect(self.show_file_dialog)
+        btn_file.clicked.connect(self.show_open_dialog)
+
+        # Save
+        self.btn_save = QPushButton("Save")
+        self.btn_save.setDisabled(True)
+        self.btn_save.clicked.connect(self.show_save_dialog)
 
         # Audio controls
         self.btn_pause = QPushButton("Pause")
@@ -100,6 +105,7 @@ class MainWindow(QWidget):
         hbox_top.addWidget(lbl_file)
         hbox_top.addWidget(self.txt_file)
         hbox_top.addWidget(btn_file)
+        hbox_top.addWidget(self.btn_save)
         hbox_top.addStretch()
         hbox_top.addSpacerItem(spacer)
         hbox_top.addWidget(self.btn_pause)
@@ -136,21 +142,31 @@ class MainWindow(QWidget):
         self.plotnav.move(self.width() - 55, 0)
 
     def update_ui(self, block):
+        self.btn_save.setDisabled(not self.is_signal_loaded())
         self.btn_pause.setDisabled(not block)
         self.btn_pause.setText("Resume" if self.sound_paused else "Pause")
         self.btn_play.setDisabled(block)
         self.btn_stop.setDisabled(not block)
         self.plotnav.setDisabled(self.is_sound_playing())
 
-    def show_file_dialog(self):
+    def show_open_dialog(self):
         fname = QFileDialog.getOpenFileName(self, "Select file")
         if fname[0]:
-            self.txt_file.setText(fname[0])
-            self.load_signal(fname[0])
-            if self.is_signal_loaded():
+            if self.load_signal(fname[0]):
+                self.txt_file.setText(fname[0])
                 self.plot(self.signal, self.sound)
-        else:
-            self.txt_file.setText("")
+
+    def show_save_dialog(self):
+        fname = QFileDialog.getSaveFileName(self, "Save file")
+        if fname[0]:
+            if self.is_signal_loaded():
+                ext = fname[0].rsplit(".", 1)[-1]
+                try:
+                    self.sound.export(fname[0], format=ext)
+                except exceptions.CouldntEncodeError:
+                    print("Failed to save signal!")
+                else:
+                    self.txt_file.setText(fname[0])
 
     def load_signal(self, file):
         self.sound_stop()
@@ -160,8 +176,10 @@ class MainWindow(QWidget):
             self.signal = np.array(self.sound.get_array_of_samples())
         except exceptions.CouldntDecodeError:
             print("Failed to load signal!")
-
-        self.update_ui(self.signal is None)
+            return False
+        else:
+            self.update_ui(self.signal is None)
+            return True
 
     def is_signal_loaded(self):
         return self.sound is not None and self.signal is not None
