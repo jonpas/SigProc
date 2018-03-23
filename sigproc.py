@@ -19,6 +19,7 @@ class MainWindow(QWidget):
     sig_sound_play_at = pyqtSignal(float)
     sig_sound_pause = pyqtSignal()
     sig_sound_stop = pyqtSignal()
+    sig_record_stop = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -28,9 +29,11 @@ class MainWindow(QWidget):
 
         self.plotbackground = None
 
-        self.sound_thread = None
+        self.playing = False
         self.sound_paused = False
         self.sound_start_at = 0
+
+        self.recording = False
 
         self.initUI()
 
@@ -69,23 +72,25 @@ class MainWindow(QWidget):
         cb_source_speed.setToolTip("Source speed")
         cb_source_speed.addItems(["20 km/h", "50 km/h", "100 km/h", "250 km/h", "500 km/h"])
         self.source_speeds = [20, 50, 100, 250, 500]  # Same indexes as text above
-        btn_doppler = QPushButton("Simulate Doppler Shift")
+        self.btn_doppler = QPushButton("Simulate Doppler Shift")
 
         # Effects
-        btn_effect = QPushButton("Apply Effect")
-        # self.btn_effects.clicked.connect(self.effect_select)
+        self.btn_effect = QPushButton("Apply Effect")
+        # self.btn_effect.clicked.connect(self.effect_select)
 
         # Recording
-        cb_sample_rate = QComboBox()
-        cb_sample_rate.setToolTip("Sampling rate")
-        cb_sample_rate.addItems(["8.000 Hz", "11.025 Hz", "22.050 Hz", "44.100 Hz"])
+        self.cb_sample_rate = QComboBox()
+        self.cb_sample_rate.setToolTip("Sampling rate")
+        self.cb_sample_rate.addItems(["8.000 Hz", "11.025 Hz", "22.050 Hz", "44.100 Hz"])
+        self.cb_sample_rate.setCurrentIndex(3)
         self.sampling_rates = [8000, 11025, 22050, 44100]  # Same indexes as text above
-        btn_record = QPushButton("Record")
-        # self.btn_record.clicked.connect(self.sound_record)
+        self.btn_record = QPushButton("Record")
+        self.btn_record.clicked.connect(self.record)
 
-        cb_bit_depth = QComboBox()
-        cb_bit_depth.setToolTip("Bit depth")
-        cb_bit_depth.addItems(["8 b", "16 b"])
+        self.cb_bit_depth = QComboBox()
+        self.cb_bit_depth.setToolTip("Bit depth")
+        self.cb_bit_depth.addItems(["8 b", "16 b"])
+        self.cb_bit_depth.setCurrentIndex(1)
         self.bit_depths = [pyaudio.paInt8, pyaudio.paInt16]  # Same indexes as text above
 
         # Graph space
@@ -114,15 +119,15 @@ class MainWindow(QWidget):
 
         hbox_bot = QHBoxLayout()
         hbox_bot.addWidget(cb_source_speed)
-        hbox_bot.addWidget(btn_doppler)
+        hbox_bot.addWidget(self.btn_doppler)
         hbox_bot.addStretch()
         hbox_bot.addSpacerItem(spacer)
-        hbox_bot.addWidget(btn_effect)
+        hbox_bot.addWidget(self.btn_effect)
         hbox_bot.addStretch()
         hbox_bot.addSpacerItem(spacer)
-        hbox_bot.addWidget(cb_sample_rate)
-        hbox_bot.addWidget(cb_bit_depth)
-        hbox_bot.addWidget(btn_record)
+        hbox_bot.addWidget(self.cb_sample_rate)
+        hbox_bot.addWidget(self.cb_bit_depth)
+        hbox_bot.addWidget(self.btn_record)
 
         vbox = QVBoxLayout()
         vbox.addLayout(hbox_top)
@@ -137,29 +142,37 @@ class MainWindow(QWidget):
 
     # Overriden resize event
     def resizeEvent(self, resizeEvent):
-        if self.is_signal_loaded():
+        if self.is_sound_loaded():
             self.on_plot_change(None)
         self.plotnav.move(self.width() - 55, 0)
 
-    def update_ui(self, block):
-        self.btn_save.setDisabled(not self.is_signal_loaded())
-        self.btn_pause.setDisabled(not block)
+    def update_ui(self):
+        self.btn_save.setDisabled(not self.is_sound_loaded())
+
+        self.btn_pause.setDisabled(not self.playing)
         self.btn_pause.setText("Resume" if self.sound_paused else "Pause")
-        self.btn_play.setDisabled(block)
-        self.btn_stop.setDisabled(not block)
-        self.plotnav.setDisabled(self.is_sound_playing())
+        self.btn_play.setDisabled(self.playing or self.recording)
+        self.btn_stop.setDisabled(not self.playing or self.recording)
+
+        self.plotnav.setDisabled(self.playing and not self.sound_paused)
+
+        self.btn_doppler.setDisabled(self.playing or self.sound_paused)
+        self.btn_effect.setDisabled(self.playing or self.sound_paused)
+
+        self.btn_record.setDisabled(self.playing or self.sound_paused)
+        self.btn_record.setText("Stop" if self.recording else "Record")
 
     def show_open_dialog(self):
         fname = QFileDialog.getOpenFileName(self, "Select file")
         if fname[0]:
-            if self.load_signal(fname[0]):
+            if self.load_sound(fname[0]):
                 self.txt_file.setText(fname[0])
                 self.plot(self.signal, self.sound)
 
     def show_save_dialog(self):
         fname = QFileDialog.getSaveFileName(self, "Save file")
         if fname[0]:
-            if self.is_signal_loaded():
+            if self.is_sound_loaded():
                 ext = fname[0].rsplit(".", 1)[-1]
                 try:
                     self.sound.export(fname[0], format=ext)
@@ -168,7 +181,7 @@ class MainWindow(QWidget):
                 else:
                     self.txt_file.setText(fname[0])
 
-    def load_signal(self, file):
+    def load_sound(self, file):
         self.sound_stop()
 
         try:
@@ -178,11 +191,23 @@ class MainWindow(QWidget):
             print("Failed to load signal!")
             return False
         else:
-            self.update_ui(self.signal is None)
+            self.update_ui()
             return True
 
-    def is_signal_loaded(self):
+    def is_sound_loaded(self):
         return self.sound is not None and self.signal is not None
+
+    def load_signal(self, data, sample_width, channels):
+        self.sound_stop()
+
+        rate = self.sampling_rates[self.cb_sample_rate.currentIndex()]
+        self.sound = AudioSegment(
+            data=data,
+            sample_width=sample_width,
+            frame_rate=rate,
+            channels=channels)
+        self.signal = np.array(self.sound.get_array_of_samples())
+        self.plot(self.signal, self.sound)
 
     def plot(self, signal, sound):
         self.figure.clear()
@@ -258,7 +283,7 @@ class MainWindow(QWidget):
         if event.xdata is not None and event.ydata is not None:
             self.sound_start_at = event.xdata
             self.sound_play()
-            self.update_ui(True)
+            self.update_ui()
 
             # Update lines
             self.lclick_pos = event.xdata
@@ -294,9 +319,9 @@ class MainWindow(QWidget):
         self.figure.canvas.blit(self.figure.bbox)
 
     def sound_play(self):
-        if self.sound_thread:
+        if self.playing:
             self.sig_sound_play_at.emit(self.sound_start_at)
-        elif self.is_signal_loaded():
+        elif self.is_sound_loaded():
             self.sound_thread = SoundThread(self.sound, self.sound_start_at, self.sound_mutex, self.sound_pause_cond)
             self.sig_sound_play_at.connect(self.sound_thread.play_at)
             self.sig_sound_pause.connect(self.sound_thread.pause)
@@ -304,10 +329,9 @@ class MainWindow(QWidget):
             self.sound_thread.sig_frame.connect(self.plot_frame)
             self.sound_thread.finished.connect(self.on_sound_done)
             self.sound_thread.start()
-            self.update_ui(True)
 
-    def is_sound_playing(self):
-        return self.sound_thread is not None and not self.sound_paused
+            self.playing = True
+            self.update_ui()
 
     def sound_stop(self):
         self.sig_sound_stop.emit()
@@ -324,13 +348,32 @@ class MainWindow(QWidget):
         else:
             self.sig_sound_pause.emit()
         self.sound_paused = not self.sound_paused
-        self.update_ui(True)
+        self.update_ui()
 
     def on_sound_done(self):
-        self.sound_thread = None
-        self.update_ui(False)
+        self.playing = False
+        self.sound_paused = False
+        self.update_ui()
         self.lframe_pos = 0
         self.plot_update()
+
+    def record(self):  # Toggle
+        if self.recording:
+            self.sig_record_stop.emit()
+        else:
+            self.recording = True
+            bit_depth = self.bit_depths[self.cb_bit_depth.currentIndex()]
+            rate = self.sampling_rates[self.cb_sample_rate.currentIndex()]
+            self.record_thread = RecordThread(bit_depth, rate, 2)  # Always record in stereo (2 channels)
+            self.sig_record_stop.connect(self.record_thread.stop)
+            self.record_thread.sig_return.connect(self.on_record_return)
+            self.record_thread.start()
+            self.update_ui()
+
+    def on_record_return(self, data, sample_width, channels):
+        self.load_signal(data, sample_width, channels)
+        self.recording = False
+        self.update_ui()
 
 
 class SoundThread(QThread):
@@ -388,6 +431,44 @@ class SoundThread(QThread):
 
     def pause(self):  # Toggle
         self.paused = not self.paused
+
+    def stop(self):
+        self.running = False
+
+
+class RecordThread(QThread):
+    sig_return = pyqtSignal(bytes, int, int)
+
+    def __init__(self, bit_depth, rate, channels):
+        QThread.__init__(self)
+
+        self.bit_depth = bit_depth
+        self.rate = rate
+        self.channels = channels
+
+        self.running = True
+
+    def __del__(self):
+        self.wait()
+
+    def run(self):
+        p = PyAudio()
+        stream = p.open(
+            format=self.bit_depth,
+            channels=self.channels,
+            rate=self.rate,
+            input=True,
+            frames_per_buffer=1024)
+
+        data = []
+        while self.running:
+            data.append(stream.read(1024))
+
+        stream.close()
+        p.terminate()
+
+        # Return recording data
+        self.sig_return.emit(b''.join(data), p.get_sample_size(self.bit_depth), self.channels)
 
     def stop(self):
         self.running = False
