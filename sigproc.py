@@ -163,14 +163,14 @@ class MainWindow(QWidget):
         self.btn_record.setText("Stop" if self.recording else "Record")
 
     def show_open_dialog(self):
-        fname = QFileDialog.getOpenFileName(self, "Select file")
+        fname = QFileDialog.getOpenFileName(self, "Open file", filter="WAV (*.wav);;MP3 (*.mp3)")
         if fname[0]:
             if self.load_sound(fname[0]):
                 self.txt_file.setText(fname[0])
                 self.plot(self.signal, self.sound)
 
     def show_save_dialog(self):
-        fname = QFileDialog.getSaveFileName(self, "Save file")
+        fname = QFileDialog.getSaveFileName(self, "Save file", filter="WAV (*.wav);;MP3 (*.mp3)")
         if fname[0]:
             if self.is_sound_loaded():
                 ext = fname[0].rsplit(".", 1)[-1]
