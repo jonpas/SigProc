@@ -4,6 +4,7 @@ import sys
 import os
 import itertools
 import numpy as np
+from scipy import signal
 import pyaudio
 from pydub import AudioSegment, exceptions
 from pydub.utils import make_chunks
@@ -178,14 +179,14 @@ class MainWindow(QWidget):
         self.btn_record.setText("Stop" if self.recording else "Record")
 
     def show_open_dialog(self):
-        fname = QFileDialog.getOpenFileName(self, "Open file", filter="WAV (*.wav);;MP3 (*.mp3)")
+        fname = QFileDialog.getOpenFileName(self, "Open file", filter="Audio (*.wav *.mp3)")
         if fname[0]:
             if self.load_sound(fname[0]):
                 self.txt_file.setText(fname[0])
                 self.plot(self.signal, self.sound)
 
     def show_save_dialog(self):
-        fname = QFileDialog.getSaveFileName(self, "Save file", filter="WAV (*.wav);;MP3 (*.mp3)")
+        fname = QFileDialog.getSaveFileName(self, "Save file", filter="Audio (*.wav *.mp3)")
         if fname[0]:
             if self.is_sound_loaded():
                 ext = fname[0].rsplit(".", 1)[-1]
@@ -213,8 +214,6 @@ class MainWindow(QWidget):
         return self.sound is not None and self.signal is not None
 
     def load_signal(self, data, sample_width, channels):
-        self.sound_stop()
-
         rate = self.sampling_rates[self.cb_sample_rate.currentIndex()]
         self.sound = AudioSegment(
             data=data,
@@ -231,7 +230,10 @@ class MainWindow(QWidget):
             self.plot(self.signal, self.sound)
 
     def effect_apply(self):
-        print("apply effect: {}".format(feffect))
+        if not self.is_sound_loaded():
+            print("Failed to apply effect! No sound loaded!")
+            return
+
         feffect = self.effects[self.cb_effect.currentIndex()]
         try:
             effect_sound = AudioSegment.from_file(feffect)
@@ -239,10 +241,18 @@ class MainWindow(QWidget):
         except exceptions.CouldntDecodeError:
             print("Failed to load effect!")
 
-        # Convolute self.signal with effect_signal
-        # Load resulting signal via self.load_signal()
+        if effect_sound.frame_rate != self.sound.frame_rate:
+            print("Failed to apply effect! Effect rate ({}) not same as sound rate ({})!"
+                  .format(effect_sound.frame_rate, self.sound.frame_rate))
+            return
 
-    def plot(self, signal, sound):
+        # Convolve signals using fast fourier transform
+        res = signal.fftconvolve(self.signal, effect_signal)
+
+        # Load resulting signal
+        self.load_signal(b''.join(res), 2, effect_sound.channels)
+
+    def plot(self, sig, sound):
         self.figure.clear()
         self.subplots = []
         self.lclick = []
@@ -254,7 +264,7 @@ class MainWindow(QWidget):
         self.sound_start_at = 0
 
         # X axis as time in seconds
-        time = np.linspace(0, sound.duration_seconds, num=len(signal))
+        time = np.linspace(0, sound.duration_seconds, num=len(sig))
 
         for i in range(0, sound.channels):
             ax = self.figure.add_subplot(sound.channels, 1, i + 1)
