@@ -101,9 +101,9 @@ class MainWindow(QWidget):
 
         self.cb_bit_depth = QComboBox()
         self.cb_bit_depth.setToolTip("Bit depth")
-        self.cb_bit_depth.addItems(["8 b", "16 b"])
+        self.cb_bit_depth.addItems(["8 b", "16 b", "32 b"])
         self.cb_bit_depth.setCurrentIndex(1)
-        self.bit_depths = [pyaudio.paInt8, pyaudio.paInt16]  # Same indexes as text above
+        self.bit_depths = [pyaudio.paUInt8, pyaudio.paInt16, pyaudio.paInt32]  # Same indexes as text above
 
         # Graph space
         self.figure = Figure()
@@ -217,7 +217,7 @@ class MainWindow(QWidget):
         rate = self.sampling_rates[self.cb_sample_rate.currentIndex()]
         self.sound = AudioSegment(
             data=data,
-            sample_width=sample_width,
+            sample_width=sample_width,  # 3 (24-bit) not supported by pydub
             frame_rate=rate,
             channels=channels)
         self.signal = np.array(self.sound.get_array_of_samples())
@@ -247,9 +247,11 @@ class MainWindow(QWidget):
             return
 
         # Convolve signals using fast fourier transform
+        # AudioSegment(…).split_to_mono()
         res = signal.fftconvolve(self.signal, effect_signal)
 
         # Load resulting signal
+        # AudioSegment.from_mono_audiosegments()
         self.load_signal(b''.join(res), 2, effect_sound.channels)
 
     def plot(self, sig, sound):
@@ -440,7 +442,7 @@ class SoundThread(QThread):
     def run(self):
         p = PyAudio()
         stream = p.open(
-            format=p.get_format_from_width(self.sound.sample_width),
+            format=self.get_format_from_width(self.sound.sample_width),
             channels=self.sound.channels,
             rate=self.sound.frame_rate,
             output=True)
@@ -477,6 +479,17 @@ class SoundThread(QThread):
 
     def stop(self):
         self.running = False
+
+    # Replacement function for pyaudio.get_format_from_width() due to wrong return values
+    def get_format_from_width(self, width):
+        if width == 1:
+            return pyaudio.paUInt8
+        elif width == 2:
+            return pyaudio.paInt16
+        elif width == 3:
+            return pyaudio.paInt24  # Not supported by pydub
+        elif width == 4:
+            return pyaudio.paInt32
 
 
 class RecordThread(QThread):
