@@ -36,6 +36,7 @@ class MainWindow(QWidget):
         self.sound_start_at = 0
 
         self.recording = False
+        self.doppler = False  # Doppler simulation
 
         self.initUI()
 
@@ -70,15 +71,19 @@ class MainWindow(QWidget):
         self.btn_stop.clicked.connect(self.sound_stop)
 
         # Doppler Shift simulation
-        cb_source_speed = QComboBox()
-        cb_source_speed.setToolTip("Source speed")
-        cb_source_speed.addItems(["20 km/h", "50 km/h", "100 km/h", "250 km/h", "500 km/h"])
+        self.cb_source_speed = QComboBox()
+        self.cb_source_speed.setToolTip("Source speed")
+        self.cb_source_speed.addItems(["20 km/h", "50 km/h", "100 km/h", "250 km/h", "500 km/h"])
         self.source_speeds = [20, 50, 100, 250, 500]  # Same indexes as text above
-        self.btn_doppler = QPushButton("Simulate Doppler Shift")
+        self.btn_doppler = QPushButton("Simulate Doppler")
+        self.btn_doppler.setToolTip("Simulate simple Doppler Shift")
+        self.btn_doppler.setMinimumWidth(100)
+        self.btn_doppler.clicked.connect(self.doppler_simulate)
 
         # Effects
         self.cb_effect = QComboBox()
         self.cb_effect.setToolTip("Preset effects")
+        self.cb_effect.setMaximumWidth(150)
         self.effects = []
         for root, dirs, files in os.walk("resources/impulses"):
             for file in files:
@@ -97,6 +102,7 @@ class MainWindow(QWidget):
         self.cb_sample_rate.setCurrentIndex(3)
         self.sampling_rates = [8000, 11025, 22050, 44100]  # Same indexes as text above
         self.btn_record = QPushButton("Record")
+        self.btn_record.setMinimumWidth(100)
         self.btn_record.clicked.connect(self.record)
 
         self.cb_bit_depth = QComboBox()
@@ -130,7 +136,7 @@ class MainWindow(QWidget):
         hbox_top.addWidget(self.btn_stop)
 
         hbox_bot = QHBoxLayout()
-        hbox_bot.addWidget(cb_source_speed)
+        hbox_bot.addWidget(self.cb_source_speed)
         hbox_bot.addWidget(self.btn_doppler)
         hbox_bot.addStretch()
         hbox_bot.addSpacerItem(spacer)
@@ -161,6 +167,8 @@ class MainWindow(QWidget):
         self.plotnav.move(self.width() - 55, 0)
 
     def update_ui(self):
+        block_general = self.playing or self.sound_paused or self.recording or self.doppler
+
         self.btn_save.setDisabled(not self.is_sound_loaded())
 
         self.btn_pause.setDisabled(not self.playing)
@@ -170,13 +178,18 @@ class MainWindow(QWidget):
 
         self.plotnav.setDisabled(self.playing and not self.sound_paused)
 
-        self.btn_doppler.setDisabled(self.playing or self.sound_paused)
+        self.cb_source_speed.setDisabled(block_general)
+        self.btn_doppler.setDisabled(self.playing or self.sound_paused or self.recording)
+        self.btn_doppler.setText("Stop Simulation" if self.doppler else "Simulate Doppler")
 
-        self.btn_effect.setDisabled(self.playing or self.sound_paused)
-        self.btn_effect_load.setDisabled(self.playing or self.sound_paused)
+        self.cb_effect.setDisabled(block_general)
+        self.btn_effect.setDisabled(block_general)
+        self.btn_effect_load.setDisabled(block_general)
 
-        self.btn_record.setDisabled(self.playing or self.sound_paused)
-        self.btn_record.setText("Stop" if self.recording else "Record")
+        self.cb_sample_rate.setDisabled(block_general)
+        self.cb_bit_depth.setDisabled(block_general)
+        self.btn_record.setDisabled(self.playing or self.sound_paused or self.doppler)
+        self.btn_record.setText("Stop Recording" if self.recording else "Record")
 
     def show_open_dialog(self):
         fname = QFileDialog.getOpenFileName(self, "Open file", filter="Audio (*.wav *.mp3)")
@@ -272,6 +285,13 @@ class MainWindow(QWidget):
         final[0::step] = left
         final[1::step] = right
         self.load_signal(b''.join(final), 2, self.sound.frame_rate, effect_sound.channels)
+
+    def doppler_simulate(self):  # Toggle
+        if self.doppler:
+            self.doppler = False
+        else:
+            self.doppler = True
+        self.update_ui()
 
     def plot(self, sig, sound):
         self.figure.clear()
