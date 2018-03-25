@@ -76,8 +76,8 @@ class MainWindow(QWidget):
         self.cb_source_speed.addItems(["20 km/h", "50 km/h", "100 km/h", "250 km/h", "500 km/h"])
         self.source_speeds = [20, 50, 100, 250, 500]  # Same indexes as text above
         self.btn_doppler = QPushButton("Simulate Doppler")
-        self.btn_doppler.setToolTip("Simulate simple Doppler Shift")
-        self.btn_doppler.setMinimumWidth(100)
+        self.btn_doppler.setToolTip("Apply simple Doppler Shift simulation")
+        self.btn_doppler.setDisabled(True)
         self.btn_doppler.clicked.connect(self.doppler_simulate)
 
         # Effects
@@ -167,7 +167,7 @@ class MainWindow(QWidget):
         self.plotnav.move(self.width() - 55, 0)
 
     def update_ui(self):
-        block_general = self.playing or self.sound_paused or self.recording or self.doppler
+        block_general = self.playing or self.sound_paused or self.recording
 
         self.btn_save.setDisabled(not self.is_sound_loaded())
 
@@ -178,9 +178,8 @@ class MainWindow(QWidget):
 
         self.plotnav.setDisabled(self.playing and not self.sound_paused)
 
-        self.cb_source_speed.setDisabled(block_general)
-        self.btn_doppler.setDisabled(self.playing or self.sound_paused or self.recording)
-        self.btn_doppler.setText("Stop Simulation" if self.doppler else "Simulate Doppler")
+        self.cb_source_speed.setDisabled(block_general or self.doppler)
+        self.btn_doppler.setDisabled(not self.is_sound_loaded() or self.doppler)
 
         self.cb_effect.setDisabled(block_general)
         self.btn_effect.setDisabled(block_general)
@@ -188,7 +187,7 @@ class MainWindow(QWidget):
 
         self.cb_sample_rate.setDisabled(block_general)
         self.cb_bit_depth.setDisabled(block_general)
-        self.btn_record.setDisabled(self.playing or self.sound_paused or self.doppler)
+        self.btn_record.setDisabled(self.playing or self.sound_paused)
         self.btn_record.setText("Stop Recording" if self.recording else "Record")
 
     def show_open_dialog(self):
@@ -212,6 +211,7 @@ class MainWindow(QWidget):
 
     def load_sound(self, file):
         self.sound_stop()
+        self.doppler = False
 
         try:
             self.sound = AudioSegment.from_file(file)
@@ -262,6 +262,11 @@ class MainWindow(QWidget):
                   .format(effect_sound.frame_rate, self.sound.frame_rate))
             return
 
+        # Create stereo in case original sound is mono
+        if self.sound.channels < 2:
+            self.sound = AudioSegment.from_mono_audiosegments(self.sound, self.sound)
+            self.signal = np.array(self.sound.get_array_of_samples())
+
         # Convolve signals using fast fourier transform (into stereo, each channel separately)
         step = effect_sound.channels
 
@@ -286,14 +291,16 @@ class MainWindow(QWidget):
         final[1::step] = right
         self.load_signal(b''.join(final), 2, self.sound.frame_rate, effect_sound.channels)
 
-    def doppler_simulate(self):  # Toggle
-        if self.doppler:
-            self.doppler = False
-        else:
-            self.doppler = True
+    def doppler_simulate(self):
+        self.doppler = True
         self.update_ui()
 
-    def plot(self, sig, sound):
+        # Modify signal
+
+        # Plot new signal with doppler subplot and visualization
+        self.plot(self.signal, self.sound, doppler=self.doppler)
+
+    def plot(self, sig, sound, doppler=False):
         self.figure.clear()
         self.subplots = []
         self.lclick = []
@@ -308,14 +315,14 @@ class MainWindow(QWidget):
         time = np.linspace(0, sound.duration_seconds, num=len(sig))
 
         for i in range(0, sound.channels):
-            ax = self.figure.add_subplot(sound.channels, 1, i + 1)
+            ax = self.figure.add_subplot(sound.channels + doppler, 1, i + 1)
 
             # Plot current channel, slicing it away
             ax.plot(time[i::sound.channels], sig[i::sound.channels])  # [samp1L, samp1R, samp2L, samp2R]
-            ax.margins(x=0)
+            ax.margins(0)
 
             # Hide X axis on all but last channel
-            if i + 1 < sound.channels:
+            if i + 1 < sound.channels + doppler:
                 ax.get_xaxis().set_visible(False)
             # Display Y label somewhere in the middle
             if i == int(sound.channels / 2):
@@ -323,9 +330,20 @@ class MainWindow(QWidget):
 
             self.subplots.append(ax)
 
-            # Handle zoom/pan events
-            ax.callbacks.connect("xlim_changed", self.on_plot_change)
-            ax.callbacks.connect("ylim_changed", self.on_plot_change)
+        if doppler:
+            ax = self.figure.add_subplot(sound.channels + 1, 1, sound.channels + 1)
+            ax.plot(time, sig * [0])
+            ax.axhline(0, linewidth=2, color="black")
+            ax.axvline(sound.duration_seconds * 0.5, ymin=0.25, ymax=0.75, linewidth=2, color="blue")
+            ax.set_ylim([-1, 1])
+            ax.get_yaxis().set_ticks([])
+            ax.margins(0, 1)
+            ax.set_ylabel("Doppler Sim")
+            self.subplots.append(ax)
+
+        # Handle zoom/pan events
+        self.subplots[0].callbacks.connect("xlim_changed", self.on_plot_change)
+        self.subplots[0].callbacks.connect("ylim_changed", self.on_plot_change)
 
         self.figure.subplots_adjust(hspace=0.0)
         ax.set_xlabel("Time (s)")
