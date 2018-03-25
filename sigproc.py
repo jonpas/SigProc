@@ -74,7 +74,8 @@ class MainWindow(QWidget):
         self.cb_source_speed = QComboBox()
         self.cb_source_speed.setToolTip("Source speed")
         self.cb_source_speed.addItems(["20 km/h", "50 km/h", "100 km/h", "250 km/h", "500 km/h"])
-        self.source_speeds = [20, 50, 100, 250, 500]  # Same indexes as text above
+        self.cb_source_speed.setCurrentIndex(2)
+        self.source_speeds = [5.56, 13.89, 27.78, 69.44, 138.89]  # Same indexes as text above (in m/s)
         self.btn_doppler = QPushButton("Simulate Doppler")
         self.btn_doppler.setToolTip("Apply simple Doppler Shift simulation")
         self.btn_doppler.setDisabled(True)
@@ -263,6 +264,7 @@ class MainWindow(QWidget):
             return
 
         # Create stereo in case original sound is mono
+        sound_channels = self.sound.channels
         if self.sound.channels < 2:
             self.sound = AudioSegment.from_mono_audiosegments(self.sound, self.sound)
             self.signal = np.array(self.sound.get_array_of_samples())
@@ -274,21 +276,21 @@ class MainWindow(QWidget):
         left = np.array(left / np.linalg.norm(left))
         left = np.multiply(left, 65535)  # float to int
         volume_diff = np.max(self.signal[0::step]) / np.max(left)
-        left = np.multiply(left, volume_diff).astype(np.int16)
+        left = np.multiply(left, volume_diff)
 
-        if self.sound.channels == 2:
+        if sound_channels == 2:
             right = signal.fftconvolve(self.signal[1::step], effect_signal[1::step])
             right = np.array(right / np.linalg.norm(right))
             right = np.multiply(right, 65535)  # float to int
             volume_diff = np.max(self.signal[1::step]) / np.max(right)
-            right = np.multiply(right, volume_diff).astype(np.int16)
+            right = np.multiply(right, volume_diff)
         else:
             right = left  # Mono input, copy channel
 
         # Join channels back together and load signal
         final = np.empty(left.size + right.size, np.int16)
-        final[0::step] = left
-        final[1::step] = right
+        final[0::step] = left.astype(np.int16)
+        final[1::step] = right.astype(np.int16)
         self.load_signal(b''.join(final), 2, self.sound.frame_rate, effect_sound.channels)
 
     def doppler_simulate(self):
@@ -297,7 +299,8 @@ class MainWindow(QWidget):
 
         # Modify signal
 
-        # Plot new signal with doppler subplot and visualization
+        # Load and plot new signal with doppler subplot and visualization
+        self.load_signal(b''.join(self.signal), self.sound.sample_width, self.sound.frame_rate, self.sound.channels)
         self.plot(self.signal, self.sound, doppler=self.doppler)
 
     def plot(self, sig, sound, doppler=False):
