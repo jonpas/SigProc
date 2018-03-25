@@ -101,9 +101,9 @@ class MainWindow(QWidget):
 
         self.cb_bit_depth = QComboBox()
         self.cb_bit_depth.setToolTip("Bit depth")
-        self.cb_bit_depth.addItems(["8 b", "16 b", "32 b"])
+        self.cb_bit_depth.addItems(["8 b", "16 b"])
         self.cb_bit_depth.setCurrentIndex(1)
-        self.bit_depths = [pyaudio.paUInt8, pyaudio.paInt16, pyaudio.paFloat32]  # Same indexes as text above
+        self.bit_depths = [pyaudio.paUInt8, pyaudio.paInt16]  # Same indexes as text above
 
         # Graph space
         self.figure = Figure()
@@ -233,6 +233,10 @@ class MainWindow(QWidget):
             print("Failed to apply effect! No sound loaded!")
             return
 
+        if self.sound.channels > 2:
+            print("Failed to apply effect! Sound has more than 2 channels!")
+            return
+
         feffect = self.effects[self.cb_effect.currentIndex()]
         try:
             effect_sound = AudioSegment.from_file(feffect)
@@ -245,13 +249,29 @@ class MainWindow(QWidget):
                   .format(effect_sound.frame_rate, self.sound.frame_rate))
             return
 
-        # Convolve signals using fast fourier transform
-        # AudioSegment(…).split_to_mono()
-        res = signal.fftconvolve(self.signal, effect_signal)
+        # Convolve signals using fast fourier transform (into stereo, each channel separately)
+        step = effect_sound.channels
 
-        # Load resulting signal
-        # AudioSegment.from_mono_audiosegments()
-        self.load_signal(b''.join(res), 2, effect_sound.channels)
+        left = signal.fftconvolve(self.signal[0::step], effect_signal[0::step])
+        left = np.array(left / np.linalg.norm(left))
+        left = np.multiply(left, 65535)  # float to int
+        volume_diff = np.max(self.signal[0::step]) / np.max(left)
+        left = np.multiply(left, volume_diff).astype(np.int16)
+
+        if self.sound.channels == 2:
+            right = signal.fftconvolve(self.signal[1::step], effect_signal[1::step])
+            right = np.array(right / np.linalg.norm(right))
+            right = np.multiply(right, 65535)  # float to int
+            volume_diff = np.max(self.signal[1::step]) / np.max(right)
+            right = np.multiply(right, volume_diff).astype(np.int16)
+        else:
+            right = left  # Mono input, copy channel
+
+        # Join channels back together and load signal
+        final = np.empty(left.size + right.size, np.int16)
+        final[0::step] = left
+        final[1::step] = right
+        self.load_signal(b''.join(final), 2, self.sound.frame_rate, effect_sound.channels)
 
     def plot(self, sig, sound):
         self.figure.clear()
@@ -269,10 +289,9 @@ class MainWindow(QWidget):
 
         for i in range(0, sound.channels):
             ax = self.figure.add_subplot(sound.channels, 1, i + 1)
-            samples = np.array(sound.get_array_of_samples())  # [samp1L, samp1R, samp2L, samp2R]
 
             # Plot current channel, slicing it away
-            ax.plot(time[i::sound.channels], samples[i::sound.channels])
+            ax.plot(time[i::sound.channels], sig[i::sound.channels])  # [samp1L, samp1R, samp2L, samp2R]
             ax.margins(x=0)
 
             # Hide X axis on all but last channel
