@@ -103,7 +103,7 @@ class MainWindow(QWidget):
         self.cb_bit_depth.setToolTip("Bit depth")
         self.cb_bit_depth.addItems(["8 b", "16 b", "32 b"])
         self.cb_bit_depth.setCurrentIndex(1)
-        self.bit_depths = [pyaudio.paUInt8, pyaudio.paInt16, pyaudio.paInt32]  # Same indexes as text above
+        self.bit_depths = [pyaudio.paUInt8, pyaudio.paInt16, pyaudio.paFloat32]  # Same indexes as text above
 
         # Graph space
         self.figure = Figure()
@@ -213,8 +213,7 @@ class MainWindow(QWidget):
     def is_sound_loaded(self):
         return self.sound is not None and self.signal is not None
 
-    def load_signal(self, data, sample_width, channels):
-        rate = self.sampling_rates[self.cb_sample_rate.currentIndex()]
+    def load_signal(self, data, sample_width, rate, channels):
         self.sound = AudioSegment(
             data=data,
             sample_width=sample_width,  # 3 (24-bit) not supported by pydub
@@ -270,7 +269,7 @@ class MainWindow(QWidget):
 
         for i in range(0, sound.channels):
             ax = self.figure.add_subplot(sound.channels, 1, i + 1)
-            samples = sound.get_array_of_samples()  # [samp1L, samp1R, samp2L, samp2R]
+            samples = np.array(sound.get_array_of_samples())  # [samp1L, samp1R, samp2L, samp2R]
 
             # Plot current channel, slicing it away
             ax.plot(time[i::sound.channels], samples[i::sound.channels])
@@ -415,8 +414,8 @@ class MainWindow(QWidget):
             self.record_thread.start()
             self.update_ui()
 
-    def on_record_return(self, data, sample_width, channels):
-        self.load_signal(data, sample_width, channels)
+    def on_record_return(self, data, sample_width, rate, channels):
+        self.load_signal(data, sample_width, rate, channels)
         self.recording = False
         self.update_ui()
 
@@ -442,7 +441,7 @@ class SoundThread(QThread):
     def run(self):
         p = PyAudio()
         stream = p.open(
-            format=self.get_format_from_width(self.sound.sample_width),
+            format=p.get_format_from_width(self.sound.sample_width),
             channels=self.sound.channels,
             rate=self.sound.frame_rate,
             output=True)
@@ -480,20 +479,9 @@ class SoundThread(QThread):
     def stop(self):
         self.running = False
 
-    # Replacement function for pyaudio.get_format_from_width() due to wrong return values
-    def get_format_from_width(self, width):
-        if width == 1:
-            return pyaudio.paUInt8
-        elif width == 2:
-            return pyaudio.paInt16
-        elif width == 3:
-            return pyaudio.paInt24  # Not supported by pydub
-        elif width == 4:
-            return pyaudio.paInt32
-
 
 class RecordThread(QThread):
-    sig_return = pyqtSignal(bytes, int, int)
+    sig_return = pyqtSignal(bytes, int, int, int)
 
     def __init__(self, bit_depth, rate, channels):
         QThread.__init__(self)
@@ -521,10 +509,10 @@ class RecordThread(QThread):
             data.append(stream.read(1024))
 
         stream.close()
-        p.terminate()
 
         # Return recording data
-        self.sig_return.emit(b''.join(data), p.get_sample_size(self.bit_depth), self.channels)
+        self.sig_return.emit(b''.join(data), p.get_sample_size(self.bit_depth), self.rate, self.channels)
+        p.terminate()
 
     def stop(self):
         self.running = False
