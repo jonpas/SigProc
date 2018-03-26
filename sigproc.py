@@ -297,7 +297,24 @@ class MainWindow(QWidget):
         self.doppler = True
         self.update_ui()
 
-        # Modify signal
+        # Starting data
+        speed = self.source_speeds[self.cb_source_speed.currentIndex()]
+        half_time = self.sound.duration_seconds * 0.5
+        dist_max = speed * half_time
+
+        # Volume manipulation (decrease with distance)
+        distances = np.linspace(
+            0.0, speed * (len(self.signal) / self.sound.frame_rate / self.sound.channels),
+            num=int(len(self.signal) / self.sound.channels))  # Plot distances
+        distances -= dist_max  # Take away maximum distance to get relative from center
+        distances = np.absolute(distances)  # Make positive in both directions (_/^\_)
+        distances = np.maximum(distances, 1.0)  # Prevent center clipping
+
+        new_volumes = np.power(distances, -1.0)  # Scale volume with distance
+        for i in range(0, self.sound.channels):  # Apply to all channels
+            self.signal[i::self.sound.channels] = np.multiply(self.signal[i::self.sound.channels], new_volumes)
+
+        self.signal = self.signal.astype(np.int16)
 
         # Load and plot new signal with doppler subplot and visualization
         self.load_signal(b''.join(self.signal), self.sound.sample_width, self.sound.frame_rate, self.sound.channels)
@@ -522,6 +539,7 @@ class SoundThread(QThread):
                 self.sig_frame.emit(current_time)
 
                 if self.paused:
+                    print("paused")
                     self.mutex.lock()
                     self.pause_cond.wait(self.mutex)
                     self.mutex.unlock()
@@ -534,6 +552,7 @@ class SoundThread(QThread):
         self.restart = True
 
     def pause(self):  # Toggle
+        print("toggle pause")
         self.paused = not self.paused
 
     def stop(self):
