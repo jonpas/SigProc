@@ -324,6 +324,7 @@ class MainWindow(QWidget):
         # Volume manipulation (decrease with distance)
         half_time = half1.duration_seconds
         dist_max = speed_source * half_time
+        print("Maximum distance: {} m".format(dist_max))
 
         distances = np.linspace(
             0.0, speed_source * (len(self.signal) / self.sound.frame_rate / self.sound.channels),
