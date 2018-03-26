@@ -4,7 +4,7 @@ import sys
 import os
 import itertools
 import numpy as np
-from scipy import signal
+from scipy import signal, constants
 import pyaudio
 from pydub import AudioSegment, exceptions
 from pydub.utils import make_chunks
@@ -297,14 +297,36 @@ class MainWindow(QWidget):
         self.doppler = True
         self.update_ui()
 
-        # Starting data
-        speed = self.source_speeds[self.cb_source_speed.currentIndex()]
-        half_time = self.sound.duration_seconds * 0.5
-        dist_max = speed * half_time
+        speed_source = self.source_speeds[self.cb_source_speed.currentIndex()]
+
+        # Frequency manipulation
+        speed_sound = constants.speed_of_sound
+        freq_in = speed_sound / (speed_sound - speed_source) * self.sound.frame_rate
+        freq_out = speed_sound / (speed_sound + speed_source) * self.sound.frame_rate
+
+        half1 = self.sound[0:int(len(self.sound) * 0.5)]
+        half1 = AudioSegment(
+            data=half1.get_array_of_samples(),
+            sample_width=self.sound.sample_width,
+            frame_rate=int(freq_in),
+            channels=self.sound.channels)
+
+        half2 = self.sound[int(len(self.sound) * 0.5):]
+        half2 = AudioSegment(
+            data=half2.get_array_of_samples(),
+            sample_width=self.sound.sample_width,
+            frame_rate=int(freq_out),
+            channels=self.sound.channels)
+
+        self.sound = half1.append(half2, crossfade=100)
+        self.signal = np.array(self.sound.get_array_of_samples())
 
         # Volume manipulation (decrease with distance)
+        half_time = half1.duration_seconds
+        dist_max = speed_source * half_time
+
         distances = np.linspace(
-            0.0, speed * (len(self.signal) / self.sound.frame_rate / self.sound.channels),
+            0.0, speed_source * (len(self.signal) / self.sound.frame_rate / self.sound.channels),
             num=int(len(self.signal) / self.sound.channels))  # Plot distances
         distances -= dist_max  # Take away maximum distance to get relative from center
         distances = np.absolute(distances)  # Make positive in both directions (_/^\_)
@@ -316,11 +338,11 @@ class MainWindow(QWidget):
 
         self.signal = self.signal.astype(np.int16)
 
-        # Load and plot new signal with doppler subplot and visualization
+        # Load and plot new signal with doppler and visualization subplot
         self.load_signal(b''.join(self.signal), self.sound.sample_width, self.sound.frame_rate, self.sound.channels)
-        self.plot(self.signal, self.sound, doppler=self.doppler)
+        self.plot(self.signal, self.sound, doppler_max=half_time)
 
-    def plot(self, sig, sound, doppler=False):
+    def plot(self, sig, sound, doppler_max=-1.0):
         self.figure.clear()
         self.subplots = []
         self.lclick = []
@@ -330,6 +352,8 @@ class MainWindow(QWidget):
         self.lframe = []
         self.lframe_pos = 0
         self.sound_start_at = 0
+
+        doppler = doppler_max != -1.0
 
         # X axis as time in seconds
         time = np.linspace(0, sound.duration_seconds, num=len(sig))
@@ -354,7 +378,7 @@ class MainWindow(QWidget):
             ax = self.figure.add_subplot(sound.channels + 1, 1, sound.channels + 1)
             ax.plot(time, sig * [0])
             ax.axhline(0, linewidth=2, color="black")
-            ax.axvline(sound.duration_seconds * 0.5, ymin=0.25, ymax=0.75, linewidth=2, color="blue")
+            ax.axvline(doppler_max, ymin=0.25, ymax=0.75, linewidth=2, color="blue")
             ax.set_ylim([-1, 1])
             ax.get_yaxis().set_ticks([])
             ax.margins(0, 1)
