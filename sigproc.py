@@ -73,9 +73,9 @@ class MainWindow(QWidget):
         # Doppler Shift simulation
         self.cb_source_speed = QComboBox()
         self.cb_source_speed.setToolTip("Source speed")
-        self.cb_source_speed.addItems(["20 km/h", "50 km/h", "100 km/h", "250 km/h", "500 km/h"])
+        self.cb_source_speed.addItems(["20 km/h", "50 km/h", "100 km/h", "150 km/h", "200 km/h"])
         self.cb_source_speed.setCurrentIndex(2)
-        self.source_speeds = [5.56, 13.89, 27.78, 69.44, 138.89]  # Same indexes as text above (in m/s)
+        self.source_speeds = [5.56, 13.89, 27.78, 41.67, 55.56]  # Same indexes as text above (in m/s)
         self.btn_doppler = QPushButton("Simulate Doppler")
         self.btn_doppler.setToolTip("Apply simple Doppler Shift simulation")
         self.btn_doppler.setDisabled(True)
