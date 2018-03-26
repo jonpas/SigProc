@@ -539,7 +539,6 @@ class SoundThread(QThread):
                 self.sig_frame.emit(current_time)
 
                 if self.paused:
-                    print("paused")
                     self.mutex.lock()
                     self.pause_cond.wait(self.mutex)
                     self.mutex.unlock()
@@ -552,7 +551,6 @@ class SoundThread(QThread):
         self.restart = True
 
     def pause(self):  # Toggle
-        print("toggle pause")
         self.paused = not self.paused
 
     def stop(self):
