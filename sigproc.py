@@ -568,6 +568,14 @@ class SoundThread(QThread):
                     self.pause_cond.wait(self.mutex)
                     self.mutex.unlock()
 
+                    # Reopen stream due to an issue on Linux
+                    # where stream stops begin read by backend
+                    stream = p.open(
+                        format=p.get_format_from_width(self.sound.sample_width),
+                        channels=self.sound.channels,
+                        rate=self.sound.frame_rate,
+                        output=True)
+
         stream.close()
         p.terminate()
 
