@@ -373,6 +373,10 @@ class MainWindow(QWidget):
         if not self.is_sound_loaded():
             return
 
+        if not self.stdft_window.text() or not self.stdft_noverlap.text():
+            print("Failed to analyse! Invalid input (must be integers)!")
+            return
+
         window = int(self.stdft_window.text())
         noverlap = int(self.stdft_noverlap.text())
 
@@ -442,8 +446,9 @@ class MainWindow(QWidget):
             self.subplots.append(ax)
 
         # Handle zoom/pan events
-        self.subplots[0].callbacks.connect("xlim_changed", self.on_plot_change)
-        self.subplots[0].callbacks.connect("ylim_changed", self.on_plot_change)
+        for ax in self.subplots:
+            ax.callbacks.connect("xlim_changed", self.on_plot_change)
+            ax.callbacks.connect("ylim_changed", self.on_plot_change)
 
         self.figure.subplots_adjust(hspace=0.0)
         ax.set_xlabel("Time (s)")
