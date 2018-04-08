@@ -323,7 +323,7 @@ class MainWindow(QWidget):
                 left = ch
                 if sound_channels == 1:
                     right = left  # Mono input, copy channel
-            elif i == 1:
+            else:
                 right = ch
 
         # Join channels back together and load signal
