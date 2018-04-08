@@ -4,7 +4,7 @@ import sys
 import os
 import itertools
 import numpy as np
-from scipy import signal, constants
+from scipy import signal, constants, fftpack
 import pyaudio
 from pydub import AudioSegment, exceptions
 from pydub.utils import make_chunks
@@ -306,9 +306,10 @@ class MainWindow(QWidget):
         for i in range(0, sound_channels):
             if MANUAL_CONVOLVE:
                 # Manual convolve
-                x = np.fft.fft(np.append(self.signal[i::step], np.zeros(len(effect_signal[i::step]) - 1)))
-                y = np.fft.fft(np.append(effect_signal[i::step], np.zeros(len(self.signal[i::step]) - 1)))
-                ch = np.fft.ifft(x * y)
+                n = fftpack.helper.next_fast_len(len(self.signal[i::step]) + len(effect_signal[i::step]) - 1)
+                x = np.fft.rfft(np.append(self.signal[i::step], np.zeros(len(effect_signal[i::step]) - 1)), n)
+                y = np.fft.rfft(np.append(effect_signal[i::step], np.zeros(len(self.signal[i::step]) - 1)), n)
+                ch = np.fft.irfft(x * y)
             else:
                 # SciPy fftconvolve
                 ch = signal.fftconvolve(self.signal[i::step], effect_signal[i::step])
