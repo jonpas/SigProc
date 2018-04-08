@@ -112,6 +112,20 @@ class MainWindow(QWidget):
         self.cb_bit_depth.setCurrentIndex(1)
         self.bit_depths = [pyaudio.paUInt8, pyaudio.paInt16]  # Same indexes as text above
 
+        # Analysis (ST-DFT)
+        self.stdft_window = QLineEdit()
+        self.stdft_window.setText("256")
+        self.stdft_window.setToolTip("Window length")
+        self.stdft_window.setMaximumWidth(35)
+        self.stdft_noverlap = QLineEdit()
+        self.stdft_noverlap.setText("128")
+        self.stdft_noverlap.setMaximumWidth(35)
+        self.stdft_noverlap.setToolTip("Overlap between windows (must be smaller than window length)")
+        self.btn_analyse = QPushButton("Analyse")
+        self.btn_analyse.setToolTip("Perform Short Time Discrete Fourier Transform analysis (spectrogram)")
+        self.btn_analyse.setDisabled(True)
+        self.btn_analyse.clicked.connect(self.analyse)
+
         # Graph space
         self.figure = Figure()
         FigureCanvas(self.figure)
@@ -150,10 +164,17 @@ class MainWindow(QWidget):
         hbox_bot.addWidget(self.cb_bit_depth)
         hbox_bot.addWidget(self.btn_record)
 
+        hbox_bot2 = QHBoxLayout()
+        hbox_bot2.addWidget(self.stdft_window)
+        hbox_bot2.addWidget(self.stdft_noverlap)
+        hbox_bot2.addWidget(self.btn_analyse)
+        hbox_bot2.addStretch()
+
         vbox = QVBoxLayout()
         vbox.addLayout(hbox_top)
         vbox.addWidget(self.figure.canvas)
         vbox.addLayout(hbox_bot)
+        vbox.addLayout(hbox_bot2)
 
         # Window
         self.setLayout(vbox)
@@ -191,24 +212,25 @@ class MainWindow(QWidget):
         self.btn_record.setDisabled(self.playing or self.sound_paused)
         self.btn_record.setText("Stop Recording" if self.recording else "Record")
 
+        self.stdft_window.setDisabled(block_general)
+        self.stdft_noverlap.setDisabled(block_general)
+        self.btn_analyse.setDisabled(block_general)
+
     def show_open_dialog(self):
         fname = QFileDialog.getOpenFileName(self, "Open file", filter="Audio (*.wav *.mp3)")
-        if fname[0]:
-            if self.load_sound(fname[0]):
-                self.txt_file.setText(fname[0])
-                self.plot(self.signal, self.sound)
+        if fname[0] and self.load_sound(fname[0]):
+            self.txt_file.setText(fname[0])
 
     def show_save_dialog(self):
         fname = QFileDialog.getSaveFileName(self, "Save file", filter="Audio (*.wav *.mp3)")
-        if fname[0]:
-            if self.is_sound_loaded():
-                ext = fname[0].rsplit(".", 1)[-1]
-                try:
-                    self.sound.export(fname[0], format=ext)
-                except exceptions.CouldntEncodeError:
-                    print("Failed to save signal!")
-                else:
-                    self.txt_file.setText(fname[0])
+        if fname[0] and self.is_sound_loaded():
+            ext = fname[0].rsplit(".", 1)[-1]
+            try:
+                self.sound.export(fname[0], format=ext)
+            except exceptions.CouldntEncodeError:
+                print("Failed to save signal!")
+            else:
+                self.txt_file.setText(fname[0])
 
     def load_sound(self, file):
         self.sound_stop()
@@ -218,10 +240,13 @@ class MainWindow(QWidget):
             self.sound = AudioSegment.from_file(file)
             self.signal = np.array(self.sound.get_array_of_samples())
         except exceptions.CouldntDecodeError:
-            print("Failed to load signal!")
+            print("Failed to load sound!")
+            self.sound = None
+            self.signal = None
             return False
         else:
             self.update_ui()
+            self.plot(self.signal, self.sound)
             return True
 
     def is_sound_loaded(self):
@@ -234,6 +259,7 @@ class MainWindow(QWidget):
             frame_rate=rate,
             channels=channels)
         self.signal = np.array(self.sound.get_array_of_samples())
+        self.update_ui()
         self.plot(self.signal, self.sound)
 
     def effect_load(self):
@@ -343,7 +369,27 @@ class MainWindow(QWidget):
         self.load_signal(b''.join(self.signal), self.sound.sample_width, self.sound.frame_rate, self.sound.channels)
         self.plot(self.signal, self.sound, doppler_max=half_time)
 
-    def plot(self, sig, sound, doppler_max=-1.0):
+    def analyse(self):
+        if not self.is_sound_loaded():
+            return
+
+        window = int(self.stdft_window.text())
+        noverlap = int(self.stdft_noverlap.text())
+
+        if window <= 0 or noverlap <= 0:
+            print("Failed to analyse! Invalid input (must be integers greater than 0)!")
+            return
+
+        if noverlap >= window:
+            print("Failed to analyse! Overlap must be less than window size!")
+            return
+
+        if self.sound.channels > 1:
+            print("Warning! Analysing only first channel!")
+
+        self.plot(self.signal, self.sound, stdft_window=window, stdft_noverlap=noverlap)
+
+    def plot(self, sig, sound, doppler_max=-1.0, stdft_window=-1, stdft_noverlap=-1):
         self.figure.clear()
         self.subplots = []
         self.lclick = []
@@ -355,19 +401,20 @@ class MainWindow(QWidget):
         self.sound_start_at = 0
 
         doppler = doppler_max != -1.0
+        analysis = stdft_window != -1 and stdft_noverlap != -1
 
         # X axis as time in seconds
         time = np.linspace(0, sound.duration_seconds, num=len(sig))
 
         for i in range(0, sound.channels):
-            ax = self.figure.add_subplot(sound.channels + doppler, 1, i + 1)
+            ax = self.figure.add_subplot(sound.channels + doppler + analysis, 1, i + 1)
 
             # Plot current channel, slicing it away
             ax.plot(time[i::sound.channels], sig[i::sound.channels])  # [samp1L, samp1R, samp2L, samp2R]
             ax.margins(0)
 
             # Hide X axis on all but last channel
-            if i + 1 < sound.channels + doppler:
+            if i + 1 < sound.channels + doppler + analysis:
                 ax.get_xaxis().set_visible(False)
             # Display Y label somewhere in the middle
             if i == int(sound.channels / 2):
@@ -376,14 +423,22 @@ class MainWindow(QWidget):
             self.subplots.append(ax)
 
         if doppler:
-            ax = self.figure.add_subplot(sound.channels + 1, 1, sound.channels + 1)
+            ax = self.figure.add_subplot(sound.channels + analysis + 1, 1, sound.channels + analysis + 1)
+            ax.margins(0)
             ax.plot(time, sig * [0])
             ax.axhline(0, linewidth=2, color="black")
             ax.axvline(doppler_max, ymin=0.25, ymax=0.75, linewidth=2, color="blue")
             ax.set_ylim([-1, 1])
             ax.get_yaxis().set_ticks([])
-            ax.margins(0, 1)
             ax.set_ylabel("Doppler Sim")
+            self.subplots.append(ax)
+
+        if analysis:
+            ax = self.figure.add_subplot(sound.channels + doppler + 1, 1, sound.channels + doppler + 1)
+            ax.margins(0)
+            ax.specgram(sig[0::sound.channels], Fs=self.sound.frame_rate,
+                        NFFT=stdft_window, noverlap=stdft_noverlap)
+            ax.set_ylabel("Frequency (Hz)")
             self.subplots.append(ax)
 
         # Handle zoom/pan events
