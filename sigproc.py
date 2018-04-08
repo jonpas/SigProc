@@ -16,6 +16,9 @@ from PyQt5.QtWidgets import *
 
 PyAudio = pyaudio.PyAudio
 
+# Development switches and non-exposed settings
+MANUAL_CONVOLVE = False  # Use manual convolution instead of scipy.signal.fftconvolve
+
 
 class MainWindow(QWidget):
     sig_sound_play_at = pyqtSignal(float)
@@ -297,21 +300,31 @@ class MainWindow(QWidget):
 
         # Convolve signals using fast fourier transform (into stereo, each channel separately)
         step = effect_sound.channels
+        left = None
+        right = None
 
-        left = signal.fftconvolve(self.signal[0::step], effect_signal[0::step])
-        left = np.array(left / np.linalg.norm(left))
-        left = np.multiply(left, 65535)  # float to int
-        volume_diff = np.max(self.signal[0::step]) / np.max(left)
-        left = np.multiply(left, volume_diff)
+        for i in range(0, sound_channels):
+            if MANUAL_CONVOLVE:
+                # Manual convolve
+                x = np.fft.fft(np.append(self.signal[i::step], np.zeros(len(effect_signal[i::step]) - 1)))
+                y = np.fft.fft(np.append(effect_signal[i::step], np.zeros(len(self.signal[i::step]) - 1)))
+                ch = np.fft.ifft(x * y)
+            else:
+                # SciPy fftconvolve
+                ch = signal.fftconvolve(self.signal[i::step], effect_signal[i::step])
 
-        if sound_channels == 2:
-            right = signal.fftconvolve(self.signal[1::step], effect_signal[1::step])
-            right = np.array(right / np.linalg.norm(right))
-            right = np.multiply(right, 65535)  # float to int
-            volume_diff = np.max(self.signal[1::step]) / np.max(right)
-            right = np.multiply(right, volume_diff)
-        else:
-            right = left  # Mono input, copy channel
+            # Normalize and amplify
+            ch = np.array(ch / np.linalg.norm(ch))
+            ch = np.multiply(ch, 65535)  # float to int
+            volume_diff = np.max(self.signal[i::step]) / np.max(ch)
+            ch = np.multiply(ch, volume_diff)
+
+            if i == 0:
+                left = ch
+                if sound_channels == 1:
+                    right = left  # Mono input, copy channel
+            elif i == 1:
+                right = ch
 
         # Join channels back together and load signal
         final = np.empty(left.size + right.size, np.int16)
