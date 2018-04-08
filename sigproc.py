@@ -13,6 +13,7 @@ from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as Navigatio
 from matplotlib.figure import Figure
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QMutex, QWaitCondition
 from PyQt5.QtWidgets import *
+from PyQt5.QtGui import QIntValidator
 
 PyAudio = pyaudio.PyAudio
 
@@ -120,9 +121,11 @@ class MainWindow(QWidget):
         self.stdft_window.setText("256")
         self.stdft_window.setToolTip("Window length")
         self.stdft_window.setMaximumWidth(35)
+        self.stdft_window.setValidator(QIntValidator(0, 2147483647))
         self.stdft_noverlap = QLineEdit()
         self.stdft_noverlap.setText("128")
         self.stdft_noverlap.setMaximumWidth(35)
+        self.stdft_noverlap.setValidator(QIntValidator(0, 2147483647))
         self.stdft_noverlap.setToolTip("Overlap between windows (must be smaller than window length)")
         self.btn_analyse = QPushButton("Analyse")
         self.btn_analyse.setToolTip("Perform Short Time Discrete Fourier Transform analysis (spectrogram)")
