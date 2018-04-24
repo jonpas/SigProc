@@ -9,7 +9,7 @@ import pyaudio
 from pydub import AudioSegment, exceptions
 from pydub.utils import make_chunks
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.backends.backend_qt5 import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QMutex, QWaitCondition
 from PyQt5.QtWidgets import *
