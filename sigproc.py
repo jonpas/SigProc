@@ -19,6 +19,8 @@ PyAudio = pyaudio.PyAudio
 
 # Development switches and non-exposed settings
 MANUAL_CONVOLVE = False  # Use manual convolution instead of scipy.signal.fftconvolve
+MANUAL_FILTER = False  # Use manual filter instead of scipy.signal.lfilter
+MANUAL_FILTER_TEST = False  # Run test on manual filter if enabled (compare with scipy.signal.lfilter)
 
 
 class MainWindow(QWidget):
@@ -130,7 +132,28 @@ class MainWindow(QWidget):
         self.btn_analyse = QPushButton("Analyse")
         self.btn_analyse.setToolTip("Perform Short Time Discrete Fourier Transform analysis (spectrogram)")
         self.btn_analyse.setDisabled(True)
-        self.btn_analyse.clicked.connect(self.analyse)
+        self.btn_analyse.clicked.connect(lambda: self.analyse())
+
+        # Filter
+        self.filter_order = QLineEdit()
+        self.filter_order.setText("5")
+        self.filter_order.setToolTip("Filter order")
+        self.filter_order.setMaximumWidth(25)
+        self.filter_order.setValidator(QIntValidator(0, 100))
+        self.filter_cut_low = QLineEdit()
+        self.filter_cut_low.setText("500")
+        self.filter_cut_low.setToolTip("Low critical frequency")
+        self.filter_cut_low.setMaximumWidth(35)
+        self.filter_cut_low.setValidator(QIntValidator(0, 2147483647))
+        self.filter_cut_high = QLineEdit()
+        self.filter_cut_high.setText("5000")
+        self.filter_cut_high.setToolTip("High critical frequency")
+        self.filter_cut_high.setMaximumWidth(35)
+        self.filter_cut_high.setValidator(QIntValidator(0, 2147483647))
+        self.btn_filter = QPushButton("Filter")
+        self.btn_filter.setToolTip("Filter frequencies")
+        self.btn_filter.setDisabled(True)
+        self.btn_filter.clicked.connect(self.filter)
 
         # Graph space
         self.figure = Figure()
@@ -175,6 +198,10 @@ class MainWindow(QWidget):
         hbox_bot2.addWidget(self.stdft_noverlap)
         hbox_bot2.addWidget(self.btn_analyse)
         hbox_bot2.addStretch()
+        hbox_bot2.addWidget(self.filter_order)
+        hbox_bot2.addWidget(self.filter_cut_low)
+        hbox_bot2.addWidget(self.filter_cut_high)
+        hbox_bot2.addWidget(self.btn_filter)
 
         vbox = QVBoxLayout()
         vbox.addLayout(hbox_top)
@@ -206,21 +233,16 @@ class MainWindow(QWidget):
 
         self.plotnav.setDisabled(self.playing and not self.sound_paused)
 
-        self.cb_source_speed.setDisabled(block_general or self.doppler)
         self.btn_doppler.setDisabled(not self.is_sound_loaded() or self.doppler)
 
-        self.cb_effect.setDisabled(block_general)
         self.btn_effect.setDisabled(block_general)
         self.btn_effect_load.setDisabled(block_general)
 
-        self.cb_sample_rate.setDisabled(block_general)
-        self.cb_bit_depth.setDisabled(block_general)
         self.btn_record.setDisabled(self.playing or self.sound_paused)
         self.btn_record.setText("Stop Recording" if self.recording else "Record")
 
-        self.stdft_window.setDisabled(block_general)
-        self.stdft_noverlap.setDisabled(block_general)
         self.btn_analyse.setDisabled(block_general)
+        self.btn_filter.setDisabled(block_general)
 
     def show_open_dialog(self):
         fname = QFileDialog.getOpenFileName(self, "Open file", filter="Audio (*.wav *.mp3)")
@@ -386,10 +408,7 @@ class MainWindow(QWidget):
         self.load_signal(b''.join(self.signal), self.sound.sample_width, self.sound.frame_rate, self.sound.channels)
         self.plot(self.signal, self.sound, doppler_max=half_time)
 
-    def analyse(self):
-        if not self.is_sound_loaded():
-            return
-
+    def analyse(self, filter_w=[], filter_h=[], filter_cl=-1.0, filter_ch=-1.0):
         if not self.stdft_window.text() or not self.stdft_noverlap.text():
             print("Failed to analyse! Invalid input (must be integers)!")
             return
@@ -408,9 +427,65 @@ class MainWindow(QWidget):
         if self.sound.channels > 1:
             print("Warning! Analysing only first channel!")
 
-        self.plot(self.signal, self.sound, stdft_window=window, stdft_noverlap=noverlap)
+        self.plot(self.signal, self.sound, stdft_window=window, stdft_noverlap=noverlap,
+                  filter_w=filter_w, filter_h=filter_h, filter_cl=filter_cl, filter_ch=filter_ch)
 
-    def plot(self, sig, sound, doppler_max=-1.0, stdft_window=-1, stdft_noverlap=-1):
+    def filter(self):
+        if not self.filter_order.text() or not self.filter_cut_low.text() or not self.filter_cut_high.text():
+            print("Failed to filter! Invalid input (must be integers)!")
+            return
+
+        order = int(self.filter_order.text())
+        cut_low = int(self.filter_cut_low.text())
+        cut_high = int(self.filter_cut_high.text())
+
+        if order < 0 or cut_low < 0 or cut_high < 0:
+            print("Failed to filter! Invalid input (must be integers greater or equal 0)!")
+            return
+
+        # Normalize critical frequencies (Nyquist as 1)
+        cut_low = cut_low / (self.sound.frame_rate * 0.5)
+        cut_high = cut_high / (self.sound.frame_rate * 0.5)
+
+        # Design filter
+        b, a = signal.butter(order, [cut_low, cut_high], "bandstop")
+        w, h = signal.freqz(b, a)
+
+        # Filter each channel
+        for i in range(0, self.sound.channels):
+            x = np.array(self.signal[i::self.sound.channels])  # Original
+            y = np.zeros(len(x))  # Filtered
+
+            if MANUAL_FILTER:
+                # Manual filter
+                for n in range(len(x)):
+                    y[n] = 0
+                    for k in range(len(b)):
+                        if n - k >= 0:
+                            y[n] = y[n] + b[k] * x[n - k]
+
+                    for k in range(1, len(a)):
+                        if n - k >= 0:
+                            y[n] = y[n] - a[k] * y[n - k]
+
+                if MANUAL_FILTER_TEST:
+                    y_sp = signal.lfilter(b, a, x)
+                    if np.allclose(y, y_sp, rtol=1e-02, atol=1e-08):
+                        print("Manual filter test passed!")
+                    else:
+                        print("Manual filter test failed!")
+            else:
+                # SciPy lfilter
+                y = signal.lfilter(b, a, x)
+
+            self.signal[i::self.sound.channels] = y
+
+        # Load and analyse filtered signal
+        self.load_signal(b''.join(self.signal), self.sound.sample_width, self.sound.frame_rate, self.sound.channels)
+        self.analyse(filter_w=w, filter_h=h, filter_cl=cut_low, filter_ch=cut_high)
+
+    def plot(self, sig, sound, doppler_max=-1.0, stdft_window=-1, stdft_noverlap=-1,
+             filter_w=[], filter_h=[], filter_cl=-1.0, filter_ch=-1.0):
         self.figure.clear()
         self.subplots = []
         self.lclick = []
@@ -423,28 +498,30 @@ class MainWindow(QWidget):
 
         doppler = doppler_max != -1.0
         analysis = stdft_window != -1 and stdft_noverlap != -1
+        filter_fr = len(filter_w) != 0 and len(filter_h) != 0 and filter_cl != -1.0 and filter_ch != -1.0
+        subplots = sound.channels + doppler + analysis + filter_fr + (1 if filter_fr else 0)
 
         # X axis as time in seconds
         time = np.linspace(0, sound.duration_seconds, num=len(sig))
 
         for i in range(0, sound.channels):
-            ax = self.figure.add_subplot(sound.channels + doppler + analysis, 1, i + 1)
+            ax = self.figure.add_subplot(subplots, 1, i + 1)
 
             # Plot current channel, slicing it away
             ax.plot(time[i::sound.channels], sig[i::sound.channels])  # [samp1L, samp1R, samp2L, samp2R]
             ax.margins(0)
 
             # Hide X axis on all but last channel
-            if i + 1 < sound.channels + doppler + analysis:
+            if i + 1 < subplots - filter_fr:
                 ax.get_xaxis().set_visible(False)
             # Display Y label somewhere in the middle
-            if i == int(sound.channels / 2):
+            if i == max(int(sound.channels / 2) - 1, 0):
                 ax.set_ylabel("Amplitude")
 
             self.subplots.append(ax)
 
         if doppler:
-            ax = self.figure.add_subplot(sound.channels + analysis + 1, 1, sound.channels + analysis + 1)
+            ax = self.figure.add_subplot(subplots, 1, sound.channels + analysis + 1)
             ax.margins(0)
             ax.plot(time, sig * [0])
             ax.axhline(0, linewidth=2, color="black")
@@ -455,11 +532,24 @@ class MainWindow(QWidget):
             self.subplots.append(ax)
 
         if analysis:
-            ax = self.figure.add_subplot(sound.channels + doppler + 1, 1, sound.channels + doppler + 1)
+            ax = self.figure.add_subplot(subplots, 1, sound.channels + doppler + 1)
             ax.margins(0)
             ax.specgram(sig[0::sound.channels], Fs=self.sound.frame_rate,
                         NFFT=stdft_window, noverlap=stdft_noverlap)
-            ax.set_ylabel("Frequency (Hz)")
+            ax.set_ylabel("Freq (Hz)")
+            self.subplots.append(ax)
+
+        self.figure.subplots_adjust(hspace=0.0)
+        ax.set_xlabel("Time (s)")
+
+        if filter_fr:
+            ax = self.figure.add_subplot(subplots, 1, sound.channels + analysis + 2)
+            ax.margins(0, 0.1)
+            ax.plot(filter_w / np.pi * self.sound.frame_rate * 0.5, abs(filter_h) * max(sig[0::sound.channels]))
+            ax.set_xlabel("Frequency (Hz)")
+            ax.set_ylabel("Amplitude")
+            ax.axvline(filter_cl, color="green")  # Cutoff frequency start
+            ax.axvline(filter_ch, color="green")  # Cutoff frequency stop
             self.subplots.append(ax)
 
         # Handle zoom/pan events
@@ -467,8 +557,6 @@ class MainWindow(QWidget):
             ax.callbacks.connect("xlim_changed", self.on_plot_change)
             ax.callbacks.connect("ylim_changed", self.on_plot_change)
 
-        self.figure.subplots_adjust(hspace=0.0)
-        ax.set_xlabel("Time (s)")
         self.figure.canvas.draw()
 
         # Save background for updating on the fly
