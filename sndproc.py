@@ -212,7 +212,7 @@ class MainWindow(QWidget):
         # Window
         self.setLayout(vbox)
         self.setGeometry(300, 300, 1000, 500)
-        self.setWindowTitle("Signal Processor")
+        self.setWindowTitle("Signal Processor - Sound")
         self.show()
 
     # Overriden resize event
