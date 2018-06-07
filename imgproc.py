@@ -31,25 +31,16 @@ class MainWindow(QWidget):
         btn_file = QPushButton("Select")
         btn_file.clicked.connect(self.show_open_dialog)
 
-        self.btn_show = QPushButton("Show")
-        self.btn_show.setToolTip("Show originally loaded image (reset all modifications)")
-        self.btn_show.setDisabled(True)
-        self.btn_show.clicked.connect(lambda: self.plot_image(self.orig_img))
-
         # Save
         self.btn_save = QPushButton("Save")
         self.btn_save.setDisabled(True)
         self.btn_save.clicked.connect(self.show_save_dialog)
 
-        # Graph space
-        self.figure = Figure()
-        FigureCanvas(self.figure)
-        self.figure.canvas.setMinimumHeight(400)
-
-        # Graph toolbar
-        self.plotnav = NavigationToolbar(self.figure.canvas, self.figure.canvas)
-        self.plotnav.setStyleSheet("QToolBar { border: 0px }")
-        self.plotnav.setOrientation(Qt.Vertical)
+        # Reset
+        self.btn_reset = QPushButton("Reset")
+        self.btn_reset.setToolTip("Show originally loaded image (reset all modifications)")
+        self.btn_reset.setDisabled(True)
+        self.btn_reset.clicked.connect(lambda: self.plot_image(self.orig_img))
 
         # Histogram
         self.btn_hist = QPushButton("Histogram")
@@ -57,7 +48,20 @@ class MainWindow(QWidget):
         self.btn_hist.setDisabled(True)
         self.btn_hist.clicked.connect(self.histogram)
 
+        # Graph space
+        self.figure = Figure()
+        FigureCanvas(self.figure)
+        self.figure.canvas.setMinimumHeight(300)
+
+        # Graph toolbar
+        self.plotnav = NavigationToolbar(self.figure.canvas, self.figure.canvas)
+        self.plotnav.setStyleSheet("QToolBar { border: 0px }")
+        self.plotnav.setOrientation(Qt.Vertical)
+
         # Conversion to Grayscale
+        self.cb_gray = QComboBox()
+        self.cb_gray.setToolTip("Grayscale conversion method")
+        self.cb_gray.addItems(["Average", "Red", "Green", "Blue"])
         self.btn_gray = QPushButton("Grayscale")
         self.btn_gray.setToolTip("Convert loaded image to grayscale image")
         self.btn_gray.setDisabled(True)
@@ -68,14 +72,14 @@ class MainWindow(QWidget):
         hbox_top.addWidget(lbl_file)
         hbox_top.addWidget(self.txt_file)
         hbox_top.addWidget(btn_file)
-        hbox_top.addWidget(self.btn_show)
         hbox_top.addWidget(self.btn_save)
         hbox_top.addStretch()
         hbox_top.addSpacerItem(spacer)
+        hbox_top.addWidget(self.btn_reset)
+        hbox_top.addWidget(self.btn_hist)
 
         hbox_bot = QHBoxLayout()
-        hbox_bot.addWidget(self.btn_hist)
-        hbox_bot.addStretch()
+        hbox_bot.addWidget(self.cb_gray)
         hbox_bot.addWidget(self.btn_gray)
         hbox_bot.addStretch()
 
@@ -98,7 +102,7 @@ class MainWindow(QWidget):
         block_general = not self.is_image_loaded()
 
         self.btn_save.setDisabled(block_general)
-        self.btn_show.setDisabled(block_general)
+        self.btn_reset.setDisabled(block_general)
         self.btn_hist.setDisabled(block_general)
         self.btn_gray.setDisabled(block_general)
 
@@ -158,7 +162,13 @@ class MainWindow(QWidget):
         self.figure.canvas.draw()
 
     def grayscale(self):
-        self.img = cv2.cvtColor(self.orig_img, cv2.COLOR_RGB2GRAY)
+        conversion_type = self.cb_gray.currentIndex() - 1
+        if conversion_type == -1:
+            # Convert to grayscale by averaging all channels
+            self.img = cv2.cvtColor(self.orig_img, cv2.COLOR_RGB2GRAY)
+        else:
+            # Convert to grayscale by taking one channel
+            self.img = self.orig_img[:, :, conversion_type]
         self.plot_image(self.img, gray=True)
 
 
