@@ -15,6 +15,7 @@ class MainWindow(QWidget):
         super().__init__()
 
         self.img = None
+        self.ax = None
 
         self.initUI()
 
@@ -30,7 +31,7 @@ class MainWindow(QWidget):
 
         self.btn_show = QPushButton("Show")
         self.btn_show.setDisabled(True)
-        self.btn_show.clicked.connect(lambda: self.plot(self.img))
+        self.btn_show.clicked.connect(self.plot_image)
 
         # Save
         self.btn_save = QPushButton("Save")
@@ -41,8 +42,6 @@ class MainWindow(QWidget):
         self.figure = Figure()
         FigureCanvas(self.figure)
         self.figure.canvas.setMinimumHeight(400)
-        self.subplot = self.figure.add_subplot(1, 1, 1)
-        self.subplot.axis("off")
 
         # Graph toolbar
         self.plotnav = NavigationToolbar(self.figure.canvas, self.figure.canvas)
@@ -110,21 +109,35 @@ class MainWindow(QWidget):
         if not os.path.isfile(file):
             return False
 
+        # Read image and convert from BGR (OpenCV default) to RGB
         self.img = cv2.imread(file)
         self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
-        self.plot(self.img)
+
+        self.plot_image()
         self.update_ui()
         return True
 
     def is_image_loaded(self):
         return self.img is not None
 
-    def plot(self, img):
-        self.subplot.imshow(img)
+    def reset_plot(self):
+        for ax in self.figure.axes:
+            self.figure.delaxes(ax)
+        self.ax = self.figure.add_subplot(1, 1, 1)
+
+    def plot_image(self):
+        self.reset_plot()
+        self.ax.axis("off")
+        self.ax.imshow(self.img)
         self.figure.canvas.draw()
 
     def histogram(self):
-        print("hist")
+        self.reset_plot()
+        # Plot each channel on RGB image
+        for i, col in enumerate(('r', 'g', 'b')):
+            hist = cv2.calcHist([self.img], [i], None, [256], [0, 256])
+            self.ax.plot(hist, color=col)
+        self.figure.canvas.draw()
 
 
 if __name__ == "__main__":
