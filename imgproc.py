@@ -8,7 +8,6 @@ from matplotlib.backends.backend_qt5 import NavigationToolbar2QT as NavigationTo
 from matplotlib.figure import Figure
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import *
-from PyQt5.QtGui import QPixmap
 
 
 class MainWindow(QWidget):
@@ -20,12 +19,18 @@ class MainWindow(QWidget):
         self.initUI()
 
     def initUI(self):
+        spacer = QSpacerItem(50, 0, QSizePolicy.Minimum)
+
         # File selector
         lbl_file = QLabel("File:")
         self.txt_file = QLineEdit()
         self.txt_file.setPlaceholderText("Select file ...")
         btn_file = QPushButton("Select")
         btn_file.clicked.connect(self.show_open_dialog)
+
+        self.btn_show = QPushButton("Show")
+        self.btn_show.setDisabled(True)
+        self.btn_show.clicked.connect(lambda: self.plot(self.img))
 
         # Save
         self.btn_save = QPushButton("Save")
@@ -44,17 +49,30 @@ class MainWindow(QWidget):
         self.plotnav.setStyleSheet("QToolBar { border: 0px }")
         self.plotnav.setOrientation(Qt.Vertical)
 
+        # Histogram
+        self.btn_hist = QPushButton("Histogram")
+        self.btn_hist.setToolTip("Draw histogram of loaded image")
+        self.btn_hist.setDisabled(True)
+        self.btn_hist.clicked.connect(self.histogram)
+
         # Layout
         hbox_top = QHBoxLayout()
         hbox_top.addWidget(lbl_file)
         hbox_top.addWidget(self.txt_file)
         hbox_top.addWidget(btn_file)
+        hbox_top.addWidget(self.btn_show)
         hbox_top.addWidget(self.btn_save)
         hbox_top.addStretch()
+        hbox_top.addSpacerItem(spacer)
+
+        hbox_bot = QHBoxLayout()
+        hbox_bot.addWidget(self.btn_hist)
+        hbox_bot.addStretch()
 
         vbox = QVBoxLayout()
         vbox.addLayout(hbox_top)
         vbox.addWidget(self.figure.canvas)
+        vbox.addLayout(hbox_bot)
 
         # Window
         self.setLayout(vbox)
@@ -67,7 +85,11 @@ class MainWindow(QWidget):
         self.plotnav.move(self.width() - 55, 0)
 
     def update_ui(self):
-        self.btn_save.setDisabled(not self.is_image_loaded())
+        block_general = not self.is_image_loaded()
+
+        self.btn_save.setDisabled(block_general)
+        self.btn_show.setDisabled(block_general)
+        self.btn_hist.setDisabled(block_general)
 
     def show_open_dialog(self):
         fname, ext = QFileDialog.getOpenFileName(self, "Open file", filter="Image (*.png *.jpg *.bmp)")
@@ -100,6 +122,9 @@ class MainWindow(QWidget):
     def plot(self, img):
         self.subplot.imshow(img)
         self.figure.canvas.draw()
+
+    def histogram(self):
+        print("hist")
 
 
 if __name__ == "__main__":
