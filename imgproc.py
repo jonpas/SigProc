@@ -158,6 +158,7 @@ class MainWindow(QWidget):
     def plot_image(self, img, gray=False):
         self.reset_plot()
         self.ax.axis("off")
+
         self.ax.imshow(img, cmap='gray' if gray else None)
         self.figure.canvas.draw()
 
@@ -186,7 +187,7 @@ class MainWindow(QWidget):
         return img_gray
 
     def segmentation(self, threshold=0):
-        # Make sure we are operating on grayscale image and apply threshold
+        # Make sure we are operating on grayscale image (applied to original image)
         self.grayscale()
         _, img_thresh = cv2.threshold(self.img, threshold, 255, cv2.THRESH_BINARY_INV)
 
