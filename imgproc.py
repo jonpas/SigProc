@@ -14,8 +14,10 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.img = None
         self.ax = None
+
+        self.orig_img = None
+        self.img = None
 
         self.initUI()
 
@@ -30,8 +32,9 @@ class MainWindow(QWidget):
         btn_file.clicked.connect(self.show_open_dialog)
 
         self.btn_show = QPushButton("Show")
+        self.btn_show.setToolTip("Show originally loaded image (reset all modifications)")
         self.btn_show.setDisabled(True)
-        self.btn_show.clicked.connect(self.plot_image)
+        self.btn_show.clicked.connect(lambda: self.plot_image(self.orig_img))
 
         # Save
         self.btn_save = QPushButton("Save")
@@ -50,9 +53,15 @@ class MainWindow(QWidget):
 
         # Histogram
         self.btn_hist = QPushButton("Histogram")
-        self.btn_hist.setToolTip("Draw histogram of loaded image")
+        self.btn_hist.setToolTip("Draw histogram of current image")
         self.btn_hist.setDisabled(True)
         self.btn_hist.clicked.connect(self.histogram)
+
+        # Conversion to Grayscale
+        self.btn_gray = QPushButton("Grayscale")
+        self.btn_gray.setToolTip("Convert loaded image to grayscale image")
+        self.btn_gray.setDisabled(True)
+        self.btn_gray.clicked.connect(self.grayscale)
 
         # Layout
         hbox_top = QHBoxLayout()
@@ -66,6 +75,8 @@ class MainWindow(QWidget):
 
         hbox_bot = QHBoxLayout()
         hbox_bot.addWidget(self.btn_hist)
+        hbox_bot.addStretch()
+        hbox_bot.addWidget(self.btn_gray)
         hbox_bot.addStretch()
 
         vbox = QVBoxLayout()
@@ -89,6 +100,7 @@ class MainWindow(QWidget):
         self.btn_save.setDisabled(block_general)
         self.btn_show.setDisabled(block_general)
         self.btn_hist.setDisabled(block_general)
+        self.btn_gray.setDisabled(block_general)
 
     def show_open_dialog(self):
         fname, ext = QFileDialog.getOpenFileName(self, "Open file", filter="Image (*.png *.jpg *.bmp)")
@@ -110,10 +122,11 @@ class MainWindow(QWidget):
             return False
 
         # Read image and convert from BGR (OpenCV default) to RGB
-        self.img = cv2.imread(file)
-        self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
+        self.orig_img = cv2.imread(file)
+        self.orig_img = cv2.cvtColor(self.orig_img, cv2.COLOR_BGR2RGB)
+        self.img = self.orig_img
 
-        self.plot_image()
+        self.plot_image(self.orig_img)
         self.update_ui()
         return True
 
@@ -125,19 +138,28 @@ class MainWindow(QWidget):
             self.figure.delaxes(ax)
         self.ax = self.figure.add_subplot(1, 1, 1)
 
-    def plot_image(self):
+    def plot_image(self, img, gray=False):
         self.reset_plot()
         self.ax.axis("off")
-        self.ax.imshow(self.img)
+        self.ax.imshow(img, cmap='gray' if gray else None)
         self.figure.canvas.draw()
+
+        self.img = img
 
     def histogram(self):
         self.reset_plot()
-        # Plot each channel on RGB image
-        for i, col in enumerate(('r', 'g', 'b')):
+
+        # Plot each channel on RGB image or only first channel on grayscale image
+        colors = ('r', 'g', 'b') if len(self.img.shape) > 2 else ('b',)
+        for i, color in enumerate(colors):
             hist = cv2.calcHist([self.img], [i], None, [256], [0, 256])
-            self.ax.plot(hist, color=col)
+            self.ax.plot(hist, color=color)
+
         self.figure.canvas.draw()
+
+    def grayscale(self):
+        self.img = cv2.cvtColor(self.orig_img, cv2.COLOR_RGB2GRAY)
+        self.plot_image(self.img, gray=True)
 
 
 if __name__ == "__main__":
