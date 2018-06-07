@@ -151,8 +151,7 @@ class MainWindow(QWidget):
         return self.img is not None
 
     def reset_plot(self):
-        for ax in self.figure.axes:
-            self.figure.delaxes(ax)
+        self.figure.clear()
         self.ax = self.figure.add_subplot(1, 1, 1)
 
     def plot_image(self, img, gray=False):
@@ -166,6 +165,7 @@ class MainWindow(QWidget):
 
     def histogram(self):
         self.reset_plot()
+        self.ax.margins(0)
 
         # Plot each channel on RGB image or only first channel on grayscale image
         colors = ('r', 'g', 'b') if len(self.img.shape) > 2 else ('b',)
