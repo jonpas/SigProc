@@ -8,6 +8,7 @@ from matplotlib.backends.backend_qt5 import NavigationToolbar2QT as NavigationTo
 from matplotlib.figure import Figure
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import *
+from PyQt5.QtGui import QIntValidator
 
 
 class MainWindow(QWidget):
@@ -33,19 +34,16 @@ class MainWindow(QWidget):
 
         # Save
         self.btn_save = QPushButton("Save")
-        self.btn_save.setDisabled(True)
         self.btn_save.clicked.connect(self.show_save_dialog)
 
         # Reset
         self.btn_reset = QPushButton("Reset")
         self.btn_reset.setToolTip("Show originally loaded image (reset all modifications)")
-        self.btn_reset.setDisabled(True)
         self.btn_reset.clicked.connect(lambda: self.plot_image(self.orig_img))
 
         # Histogram
         self.btn_hist = QPushButton("Histogram")
         self.btn_hist.setToolTip("Draw histogram of current image")
-        self.btn_hist.setDisabled(True)
         self.btn_hist.clicked.connect(self.histogram)
 
         # Graph space
@@ -64,8 +62,17 @@ class MainWindow(QWidget):
         self.cb_gray.addItems(["Average", "Red", "Green", "Blue"])
         self.btn_gray = QPushButton("Grayscale")
         self.btn_gray.setToolTip("Convert loaded image to grayscale image")
-        self.btn_gray.setDisabled(True)
-        self.btn_gray.clicked.connect(self.grayscale)
+        self.btn_gray.clicked.connect(lambda: self.grayscale(self.cb_gray.currentIndex() - 1))
+
+        # Segmentation
+        self.segment_thresh = QLineEdit()
+        self.segment_thresh.setText("100")
+        self.segment_thresh.setToolTip("Segmentation threshold")
+        self.segment_thresh.setMaximumWidth(25)
+        self.segment_thresh.setValidator(QIntValidator(0, 255))
+        self.btn_segment = QPushButton("Segmentation")
+        self.btn_segment.setToolTip("Convert loaded image to binary image using segmentation")
+        self.btn_segment.clicked.connect(lambda: self.segmentation(int(self.segment_thresh.text())))
 
         # Layout
         hbox_top = QHBoxLayout()
@@ -82,11 +89,16 @@ class MainWindow(QWidget):
         hbox_bot.addWidget(self.cb_gray)
         hbox_bot.addWidget(self.btn_gray)
         hbox_bot.addStretch()
+        hbox_bot.addSpacerItem(spacer)
+        hbox_bot.addWidget(self.segment_thresh)
+        hbox_bot.addWidget(self.btn_segment)
 
         vbox = QVBoxLayout()
         vbox.addLayout(hbox_top)
         vbox.addWidget(self.figure.canvas)
         vbox.addLayout(hbox_bot)
+
+        self.update_ui()
 
         # Window
         self.setLayout(vbox)
@@ -105,6 +117,7 @@ class MainWindow(QWidget):
         self.btn_reset.setDisabled(block_general)
         self.btn_hist.setDisabled(block_general)
         self.btn_gray.setDisabled(block_general)
+        self.btn_segment.setDisabled(block_general)
 
     def show_open_dialog(self):
         fname, ext = QFileDialog.getOpenFileName(self, "Open file", filter="Image (*.png *.jpg *.bmp)")
@@ -161,15 +174,24 @@ class MainWindow(QWidget):
 
         self.figure.canvas.draw()
 
-    def grayscale(self):
-        conversion_type = self.cb_gray.currentIndex() - 1
-        if conversion_type == -1:
+    def grayscale(self, type=-1):  # -1 - Average, 0 - Red, 1 - Green, 2 - Blue
+        if type < 0:
             # Convert to grayscale by averaging all channels
-            self.img = cv2.cvtColor(self.orig_img, cv2.COLOR_RGB2GRAY)
+            img_gray = cv2.cvtColor(self.orig_img, cv2.COLOR_RGB2GRAY)
         else:
             # Convert to grayscale by taking one channel
-            self.img = self.orig_img[:, :, conversion_type]
-        self.plot_image(self.img, gray=True)
+            img_gray = self.orig_img[:, :, type]
+
+        self.plot_image(img_gray, gray=True)
+        return img_gray
+
+    def segmentation(self, threshold=0):
+        # Make sure we are operating on grayscale image and apply threshold
+        self.grayscale()
+        _, img_thresh = cv2.threshold(self.img, threshold, 255, cv2.THRESH_BINARY_INV)
+
+        self.plot_image(img_thresh, gray=True)
+        return img_thresh
 
 
 if __name__ == "__main__":
