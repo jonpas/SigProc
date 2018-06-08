@@ -64,15 +64,40 @@ class MainWindow(QWidget):
         self.btn_gray.setToolTip("Convert loaded image to grayscale image")
         self.btn_gray.clicked.connect(lambda: self.grayscale(self.cb_gray.currentIndex() - 1))
 
-        # Segmentation
+        # Segmentation / Binarization
         self.segment_thresh = QLineEdit()
         self.segment_thresh.setText("100")
         self.segment_thresh.setToolTip("Segmentation threshold")
-        self.segment_thresh.setMaximumWidth(25)
+        self.segment_thresh.setMaximumWidth(30)
         self.segment_thresh.setValidator(QIntValidator(0, 255))
-        self.btn_segment = QPushButton("Segmentation")
+        self.btn_segment = QPushButton("Binarize")
         self.btn_segment.setToolTip("Convert loaded image to binary image using segmentation")
-        self.btn_segment.clicked.connect(lambda: self.segmentation(int(self.segment_thresh.text())))
+        self.btn_segment.clicked.connect(lambda: self.binarize(int(self.segment_thresh.text())))
+
+        # Smooth / Blur
+        self.btn_smooth = QPushButton("Smooth")
+        self.btn_smooth.setToolTip("Smooth (blur) current image")
+        self.btn_smooth.clicked.connect(self.smooth)
+
+        # Sharpen
+        self.btn_sharpen = QPushButton("Sharpen")
+        self.btn_sharpen.setToolTip("Sharpen current image")
+        self.btn_sharpen.clicked.connect(self.sharpen)
+
+        # Expand
+        self.btn_expand = QPushButton("Expand")
+        self.btn_expand.setToolTip("Perform expansion operation on current image")
+        self.btn_expand.clicked.connect(self.expand)
+
+        # Shrink
+        self.btn_shrink = QPushButton("Shrink")
+        self.btn_shrink.setToolTip("Perform shrinking operation on current image")
+        self.btn_shrink.clicked.connect(self.shrink)
+
+        # Edge detection
+        self.btn_edge = QPushButton("Detect Edges")
+        self.btn_edge.setToolTip("Detect edges on current image")
+        self.btn_edge.clicked.connect(self.detect_edges)
 
         # Layout
         hbox_top = QHBoxLayout()
@@ -92,6 +117,15 @@ class MainWindow(QWidget):
         hbox_bot.addSpacerItem(spacer)
         hbox_bot.addWidget(self.segment_thresh)
         hbox_bot.addWidget(self.btn_segment)
+        hbox_bot.addStretch()
+        hbox_bot.addSpacerItem(spacer)
+        hbox_bot.addWidget(self.btn_smooth)
+        hbox_bot.addWidget(self.btn_sharpen)
+        hbox_bot.addStretch()
+        hbox_bot.addSpacerItem(spacer)
+        hbox_bot.addWidget(self.btn_expand)
+        hbox_bot.addWidget(self.btn_shrink)
+        hbox_bot.addWidget(self.btn_edge)
 
         vbox = QVBoxLayout()
         vbox.addLayout(hbox_top)
@@ -118,6 +152,11 @@ class MainWindow(QWidget):
         self.btn_hist.setDisabled(block_general)
         self.btn_gray.setDisabled(block_general)
         self.btn_segment.setDisabled(block_general)
+        self.btn_smooth.setDisabled(block_general)
+        self.btn_sharpen.setDisabled(block_general)
+        self.btn_expand.setDisabled(block_general)
+        self.btn_shrink.setDisabled(block_general)
+        self.btn_edge.setDisabled(block_general)
 
     def show_open_dialog(self):
         fname, ext = QFileDialog.getOpenFileName(self, "Open file", filter="Image (*.png *.jpg *.bmp)")
@@ -163,6 +202,7 @@ class MainWindow(QWidget):
 
         self.img = img
 
+    # Draw histogram of current image
     def histogram(self):
         self.reset_plot()
         self.ax.margins(0)
@@ -175,6 +215,7 @@ class MainWindow(QWidget):
 
         self.figure.canvas.draw()
 
+    # Convert original image to grayscale
     def grayscale(self, type=-1):  # -1 - Average, 0 - Red, 1 - Green, 2 - Blue
         if type < 0:
             # Convert to grayscale by averaging all channels
@@ -186,14 +227,54 @@ class MainWindow(QWidget):
         self.plot_image(img_gray, gray=True)
         return img_gray
 
-    def segmentation(self, threshold=0):
+    # Binarize current image
+    def binarize(self, threshold=0):
         # Make sure we are operating on grayscale image (applied to original image)
         self.grayscale()
-        _, img_thresh = cv2.threshold(self.img, threshold, 255, cv2.THRESH_BINARY_INV)
+        _, img_bin = cv2.threshold(self.img, threshold, 255, cv2.THRESH_BINARY_INV)
 
-        self.plot_image(img_thresh, gray=True)
-        return img_thresh
+        self.plot_image(img_bin, gray=True)
+        return img_bin
 
+    # Smooth (blur) current image
+    def smooth(self):
+        print("smooth")
+        img_smooth = self.img
+
+        self.plot_image(img_smooth)
+        return img_smooth
+
+    # Sharpen current image
+    def sharpen(self):
+        print("sharpen")
+        img_sharp = self.img
+
+        self.plot_image(img_sharp)
+        return img_sharp
+
+    # Expand current image
+    def expand(self):
+        print("expand")
+        img_exp = self.img
+
+        self.plot_image(img_exp)
+        return img_exp
+
+    # Shrink current image
+    def shrink(self):
+        print("shrink")
+        img_shrink = self.img
+
+        self.plot_image(img_shrink)
+        return img_shrink
+
+    # Detect edges on current image
+    def detect_edges(self, kernel=[]):
+        print("detect edges")
+        img_edges = self.img
+
+        self.plot_image(img_edges)
+        return img_edges
 
 if __name__ == "__main__":
     # Create Qt application with window
