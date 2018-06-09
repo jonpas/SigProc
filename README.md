@@ -20,3 +20,5 @@ Consists of following subprograms:
 **ImgProc Dependencies:**
 - [PyQt5](https://riverbankcomputing.com/software/pyqt/download5)
 - [NumPy](https://github.com/numpy/numpy)
+- [matplotlib](https://github.com/matplotlib/matplotlib)
+- [opencv-python](https://pypi.org/project/opencv-python/)

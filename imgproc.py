@@ -84,15 +84,15 @@ class MainWindow(QWidget):
         self.btn_sharpen.setToolTip("Sharpen current image")
         self.btn_sharpen.clicked.connect(self.sharpen)
 
-        # Expand
-        self.btn_expand = QPushButton("Expand")
-        self.btn_expand.setToolTip("Perform expansion operation on current image")
-        self.btn_expand.clicked.connect(self.expand)
+        # Dilate
+        self.btn_dilate = QPushButton("Dilate")
+        self.btn_dilate.setToolTip("Dilate current image")
+        self.btn_dilate.clicked.connect(self.dilate)
 
-        # Shrink
-        self.btn_shrink = QPushButton("Shrink")
-        self.btn_shrink.setToolTip("Perform shrinking operation on current image")
-        self.btn_shrink.clicked.connect(self.shrink)
+        # Erode
+        self.btn_erode = QPushButton("Erode")
+        self.btn_erode.setToolTip("Erode current image")
+        self.btn_erode.clicked.connect(self.erode)
 
         # Edge detection
         self.btn_edge = QPushButton("Detect Edges")
@@ -123,8 +123,8 @@ class MainWindow(QWidget):
         hbox_bot.addWidget(self.btn_sharpen)
         hbox_bot.addStretch()
         hbox_bot.addSpacerItem(spacer)
-        hbox_bot.addWidget(self.btn_expand)
-        hbox_bot.addWidget(self.btn_shrink)
+        hbox_bot.addWidget(self.btn_dilate)
+        hbox_bot.addWidget(self.btn_erode)
         hbox_bot.addWidget(self.btn_edge)
 
         vbox = QVBoxLayout()
@@ -155,8 +155,8 @@ class MainWindow(QWidget):
         self.btn_smooth.setDisabled(block_general)
         self.btn_sharpen.setDisabled(block_general)
         self.btn_expand.setDisabled(block_general)
-        self.btn_shrink.setDisabled(block_general)
-        self.btn_edge.setDisabled(block_general)
+        self.btn_dilate.setDisabled(block_general)
+        self.btn_erode.setDisabled(block_general)
 
     def show_open_dialog(self):
         fname, ext = QFileDialog.getOpenFileName(self, "Open file", filter="Image (*.png *.jpg *.bmp)")
@@ -252,21 +252,21 @@ class MainWindow(QWidget):
         self.plot_image(img_sharp)
         return img_sharp
 
-    # Expand current image
-    def expand(self):
-        print("expand")
-        img_exp = self.img
+    # Dilate current image
+    def dilate(self):
+        print("dilate")
+        img_dilate = self.img
 
-        self.plot_image(img_exp)
-        return img_exp
+        self.plot_image(img_dilate)
+        return img_dilate
 
-    # Shrink current image
-    def shrink(self):
-        print("shrink")
-        img_shrink = self.img
+    # Erode current image
+    def erode(self):
+        print("erode")
+        img_erode = self.img
 
-        self.plot_image(img_shrink)
-        return img_shrink
+        self.plot_image(img_erode)
+        return img_erode
 
     # Detect edges on current image
     def detect_edges(self, kernel=[]):
@@ -275,6 +275,7 @@ class MainWindow(QWidget):
 
         self.plot_image(img_edges)
         return img_edges
+
 
 if __name__ == "__main__":
     # Create Qt application with window
