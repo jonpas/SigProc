@@ -4,7 +4,9 @@ import sys
 import os
 import numpy as np
 import cv2
+import scipy as sp
 from scipy import signal
+from scipy.ndimage import morphology
 from skimage.exposure import rescale_intensity
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5 import NavigationToolbar2QT as NavigationToolbar
@@ -27,6 +29,7 @@ class MainWindow(QWidget):
 
     def initUI(self):
         spacer = QSpacerItem(50, 0, QSizePolicy.Minimum)
+        spacer_small = QSpacerItem(10, 0, QSizePolicy.Minimum)
 
         # File selector
         lbl_file = QLabel("File:")
@@ -49,20 +52,10 @@ class MainWindow(QWidget):
         self.btn_hist.setToolTip("Draw histogram of current image")
         self.btn_hist.clicked.connect(self.histogram)
 
-        # Convolution implementation
-        self.cb_conv_impl = QComboBox()
-        self.cb_conv_impl.setToolTip("Convolution implementation")
-        self.cb_conv_impl.addItems(["OpenCV", "SciPy", "Manual"])
-
         # Graph space
         self.figure = Figure()
         FigureCanvas(self.figure)
         self.figure.canvas.setMinimumHeight(300)
-
-        # Graph toolbar
-        self.plotnav = NavigationToolbar(self.figure.canvas, self.figure.canvas)
-        self.plotnav.setStyleSheet("QToolBar { border: 0px }")
-        self.plotnav.setOrientation(Qt.Vertical)
 
         # Conversion to Grayscale
         self.cb_gray = QComboBox()
@@ -81,6 +74,16 @@ class MainWindow(QWidget):
         self.btn_segment = QPushButton("Binarize")
         self.btn_segment.setToolTip("Convert loaded image to binary image using segmentation")
         self.btn_segment.clicked.connect(lambda: self.binarize(int(self.segment_thresh.text())))
+
+        # Graph toolbar
+        self.plotnav = NavigationToolbar(self.figure.canvas, self.figure.canvas)
+        self.plotnav.setStyleSheet("QToolBar { border: 0px }")
+        self.plotnav.setOrientation(Qt.Vertical)
+
+        # Image processing implementation
+        self.cb_imgproc_impl = QComboBox()
+        self.cb_imgproc_impl.setToolTip("Processing implementation")
+        self.cb_imgproc_impl.addItems(["OpenCV", "SciPy", "Manual"])
 
         # Smooth / Blur
         self.smooth_intensity = QLineEdit()
@@ -102,6 +105,16 @@ class MainWindow(QWidget):
         self.btn_sharpen.setToolTip("Sharpen current image")
         self.btn_sharpen.clicked.connect(lambda: self.sharpen(int(self.sharpen_intensity.text())))
 
+        # Edge detection
+        self.edge_intensity = QLineEdit()
+        self.edge_intensity.setText("4")
+        self.edge_intensity.setToolTip("Edge detection intensity (must be at least 4)")
+        self.edge_intensity.setMaximumWidth(30)
+        self.edge_intensity.setValidator(QIntValidator(0, 255))
+        self.btn_edge = QPushButton("Detect Edges")
+        self.btn_edge.setToolTip("Detect edges on current image")
+        self.btn_edge.clicked.connect(lambda: self.detect_edges(int(self.edge_intensity.text())))
+
         # Dilate
         self.dilate_intensity = QLineEdit()
         self.dilate_intensity.setText("5")
@@ -122,51 +135,40 @@ class MainWindow(QWidget):
         self.btn_erode.setToolTip("Erode current image")
         self.btn_erode.clicked.connect(lambda: self.erode(int(self.erode_intensity.text())))
 
-        # Edge detection
-        self.edge_intensity = QLineEdit()
-        self.edge_intensity.setText("4")
-        self.edge_intensity.setToolTip("Edge detection intensity (must be at least 4)")
-        self.edge_intensity.setMaximumWidth(30)
-        self.edge_intensity.setValidator(QIntValidator(0, 255))
-        self.btn_edge = QPushButton("Detect Edges")
-        self.btn_edge.setToolTip("Detect edges on current image")
-        self.btn_edge.clicked.connect(lambda: self.detect_edges(int(self.edge_intensity.text())))
-
         # Layout
         hbox_top = QHBoxLayout()
         hbox_top.addWidget(lbl_file)
         hbox_top.addWidget(self.txt_file)
         hbox_top.addWidget(btn_file)
         hbox_top.addWidget(self.btn_save)
-        hbox_top.addStretch()
-        hbox_top.addSpacerItem(spacer)
-        hbox_top.addWidget(self.cb_conv_impl)
-        hbox_top.addStretch()
-        hbox_top.addSpacerItem(spacer)
         hbox_top.addWidget(self.btn_reset)
+        hbox_top.addStretch()
+        hbox_top.addSpacerItem(spacer)
         hbox_top.addWidget(self.btn_hist)
+        hbox_top.addStretch()
+        hbox_top.addSpacerItem(spacer)
+        hbox_top.addWidget(self.cb_gray)
+        hbox_top.addWidget(self.btn_gray)
+        hbox_top.addSpacerItem(spacer_small)
+        hbox_top.addWidget(self.segment_thresh)
+        hbox_top.addWidget(self.btn_segment)
 
         hbox_bot = QHBoxLayout()
-        hbox_bot.addWidget(self.cb_gray)
-        hbox_bot.addWidget(self.btn_gray)
-        hbox_bot.addStretch()
-        hbox_bot.addSpacerItem(spacer)
-        hbox_bot.addWidget(self.segment_thresh)
-        hbox_bot.addWidget(self.btn_segment)
+        hbox_bot.addWidget(self.cb_imgproc_impl)
         hbox_bot.addStretch()
         hbox_bot.addSpacerItem(spacer)
         hbox_bot.addWidget(self.smooth_intensity)
         hbox_bot.addWidget(self.btn_smooth)
         hbox_bot.addWidget(self.sharpen_intensity)
         hbox_bot.addWidget(self.btn_sharpen)
+        hbox_bot.addWidget(self.edge_intensity)
+        hbox_bot.addWidget(self.btn_edge)
         hbox_bot.addStretch()
         hbox_bot.addSpacerItem(spacer)
         hbox_bot.addWidget(self.dilate_intensity)
         hbox_bot.addWidget(self.btn_dilate)
         hbox_bot.addWidget(self.erode_intensity)
         hbox_bot.addWidget(self.btn_erode)
-        hbox_bot.addWidget(self.edge_intensity)
-        hbox_bot.addWidget(self.btn_edge)
 
         vbox = QVBoxLayout()
         vbox.addLayout(hbox_top)
@@ -281,17 +283,17 @@ class MainWindow(QWidget):
         self.plot_image(img_bin)
         return img_bin
 
-    # Gets convolution implementation from combo box (lower-case text)
-    def get_conv_impl(self):
-        return self.cb_conv_impl.currentText().lower()
+    # Get convolution implementation from combo box (lower-case text)
+    def get_imgproc_impl(self):
+        return self.cb_imgproc_impl.currentText().lower()
 
     # Convolve current image
     def convolve2d(self, kernel):
-        conv_impl = self.get_conv_impl()
-        if conv_impl == "opencv":
+        imgproc = self.get_imgproc_impl()
+        if imgproc == "opencv":
             # OpenCV filter2D
             return cv2.filter2D(self.img, -1, kernel)
-        elif conv_impl == "scipy":
+        elif imgproc == "scipy":
             # SciPy convolve2d
             if len(self.img.shape) < 3:
                 # Grayscale
@@ -303,9 +305,9 @@ class MainWindow(QWidget):
                     img_conv_ch = signal.convolve2d(self.img[:, :, ch], kernel, mode="same", boundary="symm")
                     img_conv.append(img_conv_ch)
 
-                # Stack channels, clip them to [0, 255] and represent as uint8 (prevent invalid range)
-                return np.clip(np.stack(img_conv, axis=2), 0, 255).astype("uint8")
-        elif conv_impl == "manual":
+                # Stack channels, clip them to [0, 255] and represent as original image (prevent invalid range)
+                return np.clip(np.stack(img_conv, axis=2), 0, 255).astype(self.img.dtype)
+        elif imgproc == "manual":
             # Manual convolve
             # Get spatial dimensions of the image and kernel
             (img_h, img_w) = self.img.shape[:2]
@@ -350,10 +352,10 @@ class MainWindow(QWidget):
                     img_conv_ch = rescale_intensity(img_conv_ch, in_range=(0, 255)) * 255
                     img_conv.append(img_conv_ch)
 
-                # Stack channels, clip them to [0, 255] and represent as uint8 (prevent invalid range)
-                return np.clip(np.stack(img_conv, axis=2), 0, 255).astype("uint8")
+                # Stack channels, clip them to [0, 255] and represent as original image (prevent invalid range)
+                return np.clip(np.stack(img_conv, axis=2), 0, 255).astype(self.img.dtype)
 
-        print("Error! Unknown convolution implementation!")
+        print("Error! Unknown image processing implementation!")
         return self.img
 
     # Smooth (blur) current image
@@ -381,30 +383,6 @@ class MainWindow(QWidget):
         self.plot_image(img_sharp)
         return img_sharp
 
-    # Dilate current image
-    def dilate(self, intensity=5):
-        if self.get_conv_impl() != "opencv":
-            print(" manual")
-            img_dilate = self.img
-        else:
-            kernel = np.ones((intensity, intensity))
-            img_dilate = cv2.dilate(self.img, kernel)
-
-        self.plot_image(img_dilate)
-        return img_dilate
-
-    # Erode current image
-    def erode(self, intensity=5):
-        if self.get_conv_impl() != "opencv":
-            print(" manual")
-            img_erode = self.img
-        else:
-            kernel = np.ones((intensity, intensity))
-            img_erode = cv2.erode(self.img, kernel)
-
-        self.plot_image(img_erode)
-        return img_erode
-
     # Detect edges on current image
     def detect_edges(self, intensity=5):
         if intensity < 4:
@@ -418,6 +396,69 @@ class MainWindow(QWidget):
 
         self.plot_image(img_edges)
         return img_edges
+
+    # Dilate current image
+    def dilate(self, intensity=5):
+        kernel = np.ones((intensity, intensity))
+
+        imgproc = self.get_imgproc_impl()
+        if imgproc == "opencv":
+            img_dilate = cv2.dilate(self.img, kernel)
+        elif imgproc == "scipy":
+            if len(self.img.shape) < 3:
+                # Grayscale
+                img_dilate = morphology.grey_dilation(self.img, structure=kernel)
+            else:
+                # Color - erode each channel
+                # TODO Make work correctly (green pixels appear)
+                img_dilate = []
+                for ch in range(self.img.shape[2]):
+                    img_dilate_ch = morphology.grey_dilation(
+                        self.img[:, :, ch], structure=kernel).astype(self.img.dtype)
+                    img_dilate.append(img_dilate_ch)
+
+                # Stack channels, clip them to [0, 255] and represent as original image (prevent invalid range)
+                img_dilate = np.clip(np.stack(img_dilate, axis=2), 0, 255).astype(self.img.dtype)
+        elif imgproc == "manual":
+            print("manual")
+            img_dilate = self.img
+        else:
+            print("Error! Unknown image processing implementation!")
+            img_dilate = self.img
+
+        self.plot_image(img_dilate)
+        return img_dilate
+
+    # Erode current image
+    def erode(self, intensity=5):
+        kernel = np.ones((intensity, intensity))
+
+        imgproc = self.get_imgproc_impl()
+        if imgproc == "opencv":
+            img_erode = cv2.erode(self.img, kernel)
+        elif imgproc == "scipy":
+            if len(self.img.shape) < 3:
+                # Grayscale
+                img_erode = morphology.grey_erosion(self.img, structure=kernel)
+            else:
+                # Color - erode each channel
+                # TODO Make work correctly (green pixels appear)
+                img_erode = []
+                for ch in range(self.img.shape[2]):
+                    img_erode_ch = morphology.grey_erosion(self.img[:, :, ch], structure=kernel).astype(self.img.dtype)
+                    img_erode.append(img_erode_ch)
+
+                # Stack channels, clip them to [0, 255] and represent as original image (prevent invalid range)
+                img_erode = np.clip(np.stack(img_erode, axis=2), 0, 255).astype(self.img.dtype)
+        elif imgproc == "manual":
+            print("manual")
+            img_erode = self.img
+        else:
+            print("Error! Unknown image processing implementation!")
+            img_erode = self.img
+
+        self.plot_image(img_erode)
+        return img_erode
 
 
 if __name__ == "__main__":
