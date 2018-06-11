@@ -22,4 +22,5 @@ Consists of following subprograms:
 - [NumPy](https://github.com/numpy/numpy)
 - [matplotlib](https://github.com/matplotlib/matplotlib)
 - [opencv-python](https://pypi.org/project/opencv-python/)
+- [SciPy](https://github.com/scipy/scipy)
 - [scikit-image](http://scikit-image.org/)
