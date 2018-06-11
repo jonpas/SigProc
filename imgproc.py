@@ -212,7 +212,7 @@ class MainWindow(QWidget):
             if '.' not in fname:
                 fname += ".png"
 
-            cv2.imwrite(fname, self.img)
+            cv2.imwrite(fname, cv2.cvtColor(self.img, cv2.COLOR_RGB2BGR))
             self.txt_file.setText(fname)
 
     def load_image(self, file):
