@@ -4,7 +4,6 @@ import sys
 import os
 import numpy as np
 import cv2
-import scipy as sp
 from scipy import signal
 from scipy.ndimage import morphology
 from skimage.exposure import rescale_intensity
@@ -118,7 +117,7 @@ class MainWindow(QWidget):
         # Dilate
         self.dilate_intensity = QLineEdit()
         self.dilate_intensity.setText("5")
-        self.dilate_intensity.setToolTip("Dilation intensity (must be at least 5)")
+        self.dilate_intensity.setToolTip("Dilation intensity (must be at least 2)")
         self.dilate_intensity.setMaximumWidth(30)
         self.dilate_intensity.setValidator(QIntValidator(0, 255))
         self.btn_dilate = QPushButton("Dilate")
@@ -128,7 +127,7 @@ class MainWindow(QWidget):
         # Erode
         self.erode_intensity = QLineEdit()
         self.erode_intensity.setText("5")
-        self.erode_intensity.setToolTip("Erosion intensity (must be at least 5)")
+        self.erode_intensity.setToolTip("Erosion intensity (must be at least 2)")
         self.erode_intensity.setMaximumWidth(30)
         self.erode_intensity.setValidator(QIntValidator(0, 255))
         self.btn_erode = QPushButton("Erode")
@@ -272,7 +271,6 @@ class MainWindow(QWidget):
             img_gray = self.img[:, :, type]
 
         self.plot_image(img_gray)
-        return img_gray
 
     # Binarize current image
     def binarize(self, threshold=0):
@@ -281,84 +279,12 @@ class MainWindow(QWidget):
         _, img_bin = cv2.threshold(self.img, threshold, 255, cv2.THRESH_BINARY_INV)
 
         self.plot_image(img_bin)
-        return img_bin
 
     # Get convolution implementation from combo box (lower-case text)
     def get_imgproc_impl(self):
         return self.cb_imgproc_impl.currentText().lower()
 
-    # Convolve current image
-    def convolve2d(self, kernel):
-        imgproc = self.get_imgproc_impl()
-        if imgproc == "opencv":
-            # OpenCV filter2D
-            return cv2.filter2D(self.img, -1, kernel)
-        elif imgproc == "scipy":
-            # SciPy convolve2d
-            if len(self.img.shape) < 3:
-                # Grayscale
-                return signal.convolve2d(self.img, kernel, mode="same", boundary="symm")
-            else:
-                # Color - convolve each channel
-                img_conv = []
-                for ch in range(self.img.shape[2]):
-                    img_conv_ch = signal.convolve2d(self.img[:, :, ch], kernel, mode="same", boundary="symm")
-                    img_conv.append(img_conv_ch)
-
-                # Stack channels, clip them to [0, 255] and represent as original image (prevent invalid range)
-                return np.clip(np.stack(img_conv, axis=2), 0, 255).astype(self.img.dtype)
-        elif imgproc == "manual":
-            # Manual convolve
-            # Get spatial dimensions of the image and kernel
-            (img_h, img_w) = self.img.shape[:2]
-            (kern_h, kern_w) = kernel.shape[:2]
-
-            # Pad border
-            pad = int((kern_w - 1) / 2)
-            self.img = cv2.copyMakeBorder(self.img, pad, pad, pad, pad, cv2.BORDER_REPLICATE)
-
-            # Slide the kernel over the image from left to right and top to bottom
-            if len(self.img.shape) < 3:
-                # Grayscale
-                img_conv = np.zeros((img_h, img_w))
-                for y in np.arange(pad, img_h + pad):
-                    for x in np.arange(pad, img_w + pad):
-                        # Extract region of interest (ROI) of the image by extracting the center region
-                        roi = self.img[y - pad:y + pad + 1, x - pad:x + pad + 1]
-                        # Perform convolution (element-wise multiplication between ROI and kernel and sum of matrix)
-                        k = (roi * kernel).sum()
-                        # Store convolved value in the current coordinate
-                        img_conv[y - pad, x - pad] = k
-
-                # Rescale convolved image to be in range [0, 255]
-                return rescale_intensity(img_conv, in_range=(0, 255)) * 255
-            else:
-                # Color - convolve each channel
-                img_conv = []
-                for ch in range(self.img.shape[2]):
-                    img_ch = self.img[:, :, ch]
-
-                    img_conv_ch = np.zeros((img_h, img_w))
-                    for y in np.arange(pad, img_h + pad):
-                        for x in np.arange(pad, img_w + pad):
-                            # Extract region of interest (ROI) of the image by extracting the center region
-                            roi = img_ch[y - pad:y + pad + 1, x - pad:x + pad + 1]
-                            # Perform convolution (element-wise multiplication between ROI and kernel and sum of matrix)
-                            k = (roi * kernel).sum()
-                            # Store convolved value in the current coordinate
-                            img_conv_ch[y - pad, x - pad] = k
-
-                    # Rescale convolved image to be in range [0, 255]
-                    img_conv_ch = rescale_intensity(img_conv_ch, in_range=(0, 255)) * 255
-                    img_conv.append(img_conv_ch)
-
-                # Stack channels, clip them to [0, 255] and represent as original image (prevent invalid range)
-                return np.clip(np.stack(img_conv, axis=2), 0, 255).astype(self.img.dtype)
-
-        print("Error! Unknown image processing implementation!")
-        return self.img
-
-    # Smooth (blur) current image
+        # Smooth (blur) current image
     def smooth(self, intensity=5):
         if intensity < 3 or intensity % 2 == 0:
             print("Error! Smooth intensity should be at least 3 and an odd integer!")
@@ -367,7 +293,6 @@ class MainWindow(QWidget):
         img_smooth = self.convolve2d(kernel)
 
         self.plot_image(img_smooth)
-        return img_smooth
 
     # Sharpen current image
     def sharpen(self, intensity=5):
@@ -381,7 +306,6 @@ class MainWindow(QWidget):
         img_sharp = self.convolve2d(kernel)
 
         self.plot_image(img_sharp)
-        return img_sharp
 
     # Detect edges on current image
     def detect_edges(self, intensity=5):
@@ -395,70 +319,152 @@ class MainWindow(QWidget):
         img_edges = self.convolve2d(kernel)
 
         self.plot_image(img_edges)
-        return img_edges
 
     # Dilate current image
     def dilate(self, intensity=5):
-        kernel = np.ones((intensity, intensity))
+        if intensity < 2:
+            print("Warning! Dilation intensity should be at least 2! Defaulting to 2!")
+            intensity = 2
+
+        kernel = np.full((intensity, intensity), 255)
 
         imgproc = self.get_imgproc_impl()
         if imgproc == "opencv":
+            # OpenCV dilate
             img_dilate = cv2.dilate(self.img, kernel)
         elif imgproc == "scipy":
-            if len(self.img.shape) < 3:
-                # Grayscale
-                img_dilate = morphology.grey_dilation(self.img, structure=kernel)
-            else:
-                # Color - erode each channel
-                # TODO Make work correctly (green pixels appear)
-                img_dilate = []
-                for ch in range(self.img.shape[2]):
-                    img_dilate_ch = morphology.grey_dilation(
-                        self.img[:, :, ch], structure=kernel).astype(self.img.dtype)
-                    img_dilate.append(img_dilate_ch)
-
-                # Stack channels, clip them to [0, 255] and represent as original image (prevent invalid range)
-                img_dilate = np.clip(np.stack(img_dilate, axis=2), 0, 255).astype(self.img.dtype)
+            # SciPy grey_dilation
+            img_dilate = self.morph2d_scipy(self.img, kernel, morph_func=morphology.grey_dilation)
         elif imgproc == "manual":
-            print("manual")
-            img_dilate = self.img
+            # Manual morphology
+            img_dilate = self.convolve2d_manual(
+                self.img, kernel,
+                func=lambda roi, kernel: np.max(roi[kernel.astype(np.bool)]))
         else:
             print("Error! Unknown image processing implementation!")
             img_dilate = self.img
 
         self.plot_image(img_dilate)
-        return img_dilate
 
     # Erode current image
     def erode(self, intensity=5):
-        kernel = np.ones((intensity, intensity))
+        if intensity < 2:
+            print("Warning! Erosion intensity should be at least 2! Defaulting to 2!")
+            intensity = 2
+
+        kernel = np.full((intensity, intensity), 255, dtype=np.uint8)
 
         imgproc = self.get_imgproc_impl()
         if imgproc == "opencv":
             img_erode = cv2.erode(self.img, kernel)
         elif imgproc == "scipy":
-            if len(self.img.shape) < 3:
-                # Grayscale
-                img_erode = morphology.grey_erosion(self.img, structure=kernel)
-            else:
-                # Color - erode each channel
-                # TODO Make work correctly (green pixels appear)
-                img_erode = []
-                for ch in range(self.img.shape[2]):
-                    img_erode_ch = morphology.grey_erosion(self.img[:, :, ch], structure=kernel).astype(self.img.dtype)
-                    img_erode.append(img_erode_ch)
-
-                # Stack channels, clip them to [0, 255] and represent as original image (prevent invalid range)
-                img_erode = np.clip(np.stack(img_erode, axis=2), 0, 255).astype(self.img.dtype)
+            img_erode = self.morph2d_scipy(self.img, kernel, morph_func=morphology.grey_erosion)
         elif imgproc == "manual":
-            print("manual")
-            img_erode = self.img
+            img_erode = self.convolve2d_manual(
+                self.img, kernel,
+                func=lambda roi, kernel: np.min(roi[kernel.astype(np.bool)]))
         else:
             print("Error! Unknown image processing implementation!")
             img_erode = self.img
 
         self.plot_image(img_erode)
-        return img_erode
+
+    # Convolve given image
+    def convolve2d(self, kernel):
+        imgproc = self.get_imgproc_impl()
+        if imgproc == "opencv":
+            return cv2.filter2D(self.img, -1, kernel)
+        elif imgproc == "scipy":
+            return self.convolve2d_scipy(self.img, kernel)
+        elif imgproc == "manual":
+            return self.convolve2d_manual(
+                self.img, kernel,
+                func=lambda roi, kernel: (roi * kernel).sum())
+
+        print("Error! Unknown image processing implementation!")
+        return self.img
+
+    # Convolve given image with SciPy
+    def convolve2d_scipy(self, img, kernel):
+        if len(img.shape) < 3:
+            # Grayscale
+            return signal.convolve2d(img, kernel, mode="same", boundary="symm")
+        else:
+            # Color - convolve each channel
+            img_conv = []
+            for ch in range(img.shape[2]):
+                img_conv_ch = signal.convolve2d(img[:, :, ch], kernel, mode="same", boundary="symm")
+                img_conv.append(img_conv_ch)
+
+            # Stack channels, clip them to [0, 255] and represent as original image (prevent invalid range)
+            return np.clip(np.stack(img_conv, axis=2), 0, 255).astype(img.dtype)
+
+    # Convolve given image with manual implementation and given pixel functor
+    def convolve2d_manual(self, img, kernel, func=None):
+        if func is None:
+            print("Error! Invalid convolution functor!")
+            return img
+
+        # Get spatial dimensions of the image and kernel
+        (img_h, img_w) = img.shape[:2]
+        (kern_h, kern_w) = kernel.shape[:2]
+
+        # Pad border
+        pad = int((kern_w - 1) / 2)
+        img = cv2.copyMakeBorder(img, pad, pad, pad, pad, cv2.BORDER_REPLICATE)
+
+        if len(img.shape) < 3:
+            # Grayscale
+            return self.convolve2d_manual_channel(img, kernel, (img_h, img_w), pad, func=func)
+        else:
+            # Color - convolve each channel
+            img_conv = []
+            for ch in range(img.shape[2]):
+                img_conv_ch = self.convolve2d_manual_channel(img[:, :, ch], kernel, (img_h, img_w), pad, func=func)
+                img_conv.append(img_conv_ch)
+
+            # Stack channels, clip them to [0, 255] and represent as original image (prevent invalid range)
+            return np.clip(np.stack(img_conv, axis=2), 0, 255).astype(img.dtype)
+
+    # Convolve one channel of given image with manual implementation
+    def convolve2d_manual_channel(self, img, kernel, img_size, pad, func):
+        (img_h, img_w) = img_size
+
+        # Slide the kernel over the image from left to right and top to bottom
+        img_conv = np.zeros((img_h, img_w))
+        for y in np.arange(pad, img_h + pad):
+            for x in np.arange(pad, img_w + pad):
+                # Extract region of interest (ROI) of the image by extracting the center region
+                roi = img[y - pad:y + pad + 1, x - pad:x + pad + 1]
+                # Perform convolution (element-wise multiplication between ROI and kernel and sum of matrix)
+                k = func(roi, kernel)
+                # Store convolved value in the current coordinate
+                img_conv[y - pad, x - pad] = k
+
+        # Rescale convolved image to be in range [0, 255]
+        return rescale_intensity(img_conv, in_range=(0, 255)) * 255
+
+    # Morph current image with SciPy
+    def morph2d_scipy(self, img, kernel, morph_func=None):
+        if morph_func is None:
+            print("Error! Invalid morphology functor!")
+            return img
+
+        # SciPy does not like non-zero kernels
+        kernel = np.zeros(kernel.shape)
+
+        if len(img.shape) < 3:
+            # Grayscale
+            return morph_func(img, structure=kernel)
+        else:
+            # Color - erode each channel
+            img_morph = []
+            for ch in range(img.shape[2]):
+                img_morph_ch = morph_func(img[:, :, ch], structure=kernel).astype(img.dtype)
+                img_morph.append(img_morph_ch)
+
+            # Stack channels, clip them to [0, 255] and represent as original image (prevent invalid range)
+            return np.clip(np.stack(img_morph, axis=2), 0, 255).astype(img.dtype)
 
 
 if __name__ == "__main__":
