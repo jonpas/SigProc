@@ -2,7 +2,10 @@
 
 import sys
 import os
+import numpy as np
 import cv2
+from scipy import signal
+from skimage.exposure import rescale_intensity
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5 import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -46,6 +49,11 @@ class MainWindow(QWidget):
         self.btn_hist.setToolTip("Draw histogram of current image")
         self.btn_hist.clicked.connect(self.histogram)
 
+        # Convolution implementation
+        self.cb_conv_impl = QComboBox()
+        self.cb_conv_impl.setToolTip("Convolution implementation")
+        self.cb_conv_impl.addItems(["OpenCV", "SciPy", "Manual"])
+
         # Graph space
         self.figure = Figure()
         FigureCanvas(self.figure)
@@ -75,29 +83,54 @@ class MainWindow(QWidget):
         self.btn_segment.clicked.connect(lambda: self.binarize(int(self.segment_thresh.text())))
 
         # Smooth / Blur
+        self.smooth_intensity = QLineEdit()
+        self.smooth_intensity.setText("5")
+        self.smooth_intensity.setToolTip("Smooth intensity (must at least 3 and odd)")
+        self.smooth_intensity.setMaximumWidth(30)
+        self.smooth_intensity.setValidator(QIntValidator(0, 255))
         self.btn_smooth = QPushButton("Smooth")
         self.btn_smooth.setToolTip("Smooth (blur) current image")
-        self.btn_smooth.clicked.connect(self.smooth)
+        self.btn_smooth.clicked.connect(lambda: self.smooth(int(self.smooth_intensity.text())))
 
         # Sharpen
+        self.sharpen_intensity = QLineEdit()
+        self.sharpen_intensity.setText("5")
+        self.sharpen_intensity.setToolTip("Sharpen intensity (must be at least 5)")
+        self.sharpen_intensity.setMaximumWidth(30)
+        self.sharpen_intensity.setValidator(QIntValidator(0, 255))
         self.btn_sharpen = QPushButton("Sharpen")
         self.btn_sharpen.setToolTip("Sharpen current image")
-        self.btn_sharpen.clicked.connect(self.sharpen)
+        self.btn_sharpen.clicked.connect(lambda: self.sharpen(int(self.sharpen_intensity.text())))
 
         # Dilate
+        self.dilate_intensity = QLineEdit()
+        self.dilate_intensity.setText("5")
+        self.dilate_intensity.setToolTip("Dilation intensity (must be at least 5)")
+        self.dilate_intensity.setMaximumWidth(30)
+        self.dilate_intensity.setValidator(QIntValidator(0, 255))
         self.btn_dilate = QPushButton("Dilate")
         self.btn_dilate.setToolTip("Dilate current image")
-        self.btn_dilate.clicked.connect(self.dilate)
+        self.btn_dilate.clicked.connect(lambda: self.dilate(int(self.dilate_intensity.text())))
 
         # Erode
+        self.erode_intensity = QLineEdit()
+        self.erode_intensity.setText("5")
+        self.erode_intensity.setToolTip("Erosion intensity (must be at least 5)")
+        self.erode_intensity.setMaximumWidth(30)
+        self.erode_intensity.setValidator(QIntValidator(0, 255))
         self.btn_erode = QPushButton("Erode")
         self.btn_erode.setToolTip("Erode current image")
-        self.btn_erode.clicked.connect(self.erode)
+        self.btn_erode.clicked.connect(lambda: self.erode(int(self.erode_intensity.text())))
 
         # Edge detection
+        self.edge_intensity = QLineEdit()
+        self.edge_intensity.setText("4")
+        self.edge_intensity.setToolTip("Edge detection intensity (must be at least 4)")
+        self.edge_intensity.setMaximumWidth(30)
+        self.edge_intensity.setValidator(QIntValidator(0, 255))
         self.btn_edge = QPushButton("Detect Edges")
         self.btn_edge.setToolTip("Detect edges on current image")
-        self.btn_edge.clicked.connect(self.detect_edges)
+        self.btn_edge.clicked.connect(lambda: self.detect_edges(int(self.edge_intensity.text())))
 
         # Layout
         hbox_top = QHBoxLayout()
@@ -105,6 +138,9 @@ class MainWindow(QWidget):
         hbox_top.addWidget(self.txt_file)
         hbox_top.addWidget(btn_file)
         hbox_top.addWidget(self.btn_save)
+        hbox_top.addStretch()
+        hbox_top.addSpacerItem(spacer)
+        hbox_top.addWidget(self.cb_conv_impl)
         hbox_top.addStretch()
         hbox_top.addSpacerItem(spacer)
         hbox_top.addWidget(self.btn_reset)
@@ -119,12 +155,17 @@ class MainWindow(QWidget):
         hbox_bot.addWidget(self.btn_segment)
         hbox_bot.addStretch()
         hbox_bot.addSpacerItem(spacer)
+        hbox_bot.addWidget(self.smooth_intensity)
         hbox_bot.addWidget(self.btn_smooth)
+        hbox_bot.addWidget(self.sharpen_intensity)
         hbox_bot.addWidget(self.btn_sharpen)
         hbox_bot.addStretch()
         hbox_bot.addSpacerItem(spacer)
+        hbox_bot.addWidget(self.dilate_intensity)
         hbox_bot.addWidget(self.btn_dilate)
+        hbox_bot.addWidget(self.erode_intensity)
         hbox_bot.addWidget(self.btn_erode)
+        hbox_bot.addWidget(self.edge_intensity)
         hbox_bot.addWidget(self.btn_edge)
 
         vbox = QVBoxLayout()
@@ -154,9 +195,9 @@ class MainWindow(QWidget):
         self.btn_segment.setDisabled(block_general)
         self.btn_smooth.setDisabled(block_general)
         self.btn_sharpen.setDisabled(block_general)
-        self.btn_expand.setDisabled(block_general)
         self.btn_dilate.setDisabled(block_general)
         self.btn_erode.setDisabled(block_general)
+        self.btn_edge.setDisabled(block_general)
 
     def show_open_dialog(self):
         fname, ext = QFileDialog.getOpenFileName(self, "Open file", filter="Image (*.png *.jpg *.bmp)")
@@ -193,11 +234,11 @@ class MainWindow(QWidget):
         self.figure.clear()
         self.ax = self.figure.add_subplot(1, 1, 1)
 
-    def plot_image(self, img, gray=False):
+    def plot_image(self, img):
         self.reset_plot()
         self.ax.axis("off")
 
-        self.ax.imshow(img, cmap='gray' if gray else None)
+        self.ax.imshow(img, cmap='gray' if len(img.shape) < 3 else None)
         self.figure.canvas.draw()
 
         self.img = img
@@ -215,16 +256,20 @@ class MainWindow(QWidget):
 
         self.figure.canvas.draw()
 
-    # Convert original image to grayscale
+    # Convert current image to grayscale
     def grayscale(self, type=-1):  # -1 - Average, 0 - Red, 1 - Green, 2 - Blue
+        # Do nothing if already grayscale
+        if len(self.img.shape) < 3:
+            return self.img
+
         if type < 0:
             # Convert to grayscale by averaging all channels
-            img_gray = cv2.cvtColor(self.orig_img, cv2.COLOR_RGB2GRAY)
+            img_gray = cv2.cvtColor(self.img, cv2.COLOR_RGB2GRAY)
         else:
             # Convert to grayscale by taking one channel
-            img_gray = self.orig_img[:, :, type]
+            img_gray = self.img[:, :, type]
 
-        self.plot_image(img_gray, gray=True)
+        self.plot_image(img_gray)
         return img_gray
 
     # Binarize current image
@@ -233,45 +278,143 @@ class MainWindow(QWidget):
         self.grayscale()
         _, img_bin = cv2.threshold(self.img, threshold, 255, cv2.THRESH_BINARY_INV)
 
-        self.plot_image(img_bin, gray=True)
+        self.plot_image(img_bin)
         return img_bin
 
+    # Gets convolution implementation from combo box (lower-case text)
+    def get_conv_impl(self):
+        return self.cb_conv_impl.currentText().lower()
+
+    # Convolve current image
+    def convolve2d(self, kernel):
+        conv_impl = self.get_conv_impl()
+        if conv_impl == "opencv":
+            # OpenCV filter2D
+            return cv2.filter2D(self.img, -1, kernel)
+        elif conv_impl == "scipy":
+            # SciPy convolve2d
+            if len(self.img.shape) < 3:
+                # Grayscale
+                return signal.convolve2d(self.img, kernel, mode="same", boundary="symm")
+            else:
+                # Color - convolve each channel
+                img_conv = []
+                for ch in range(self.img.shape[2]):
+                    img_conv_ch = signal.convolve2d(self.img[:, :, ch], kernel, mode="same", boundary="symm")
+                    img_conv.append(img_conv_ch)
+
+                # Stack channels, clip them to [0, 255] and represent as uint8 (prevent invalid range)
+                return np.clip(np.stack(img_conv, axis=2), 0, 255).astype("uint8")
+        elif conv_impl == "manual":
+            # Manual convolve
+            # Get spatial dimensions of the image and kernel
+            (img_h, img_w) = self.img.shape[:2]
+            (kern_h, kern_w) = kernel.shape[:2]
+
+            # Pad border
+            pad = int((kern_w - 1) / 2)
+            self.img = cv2.copyMakeBorder(self.img, pad, pad, pad, pad, cv2.BORDER_REPLICATE)
+
+            # Slide the kernel over the image from left to right and top to bottom
+            if len(self.img.shape) < 3:
+                # Grayscale
+                img_conv = np.zeros((img_h, img_w))
+                for y in np.arange(pad, img_h + pad):
+                    for x in np.arange(pad, img_w + pad):
+                        # Extract region of interest (ROI) of the image by extracting the center region
+                        roi = self.img[y - pad:y + pad + 1, x - pad:x + pad + 1]
+                        # Perform convolution (element-wise multiplication between ROI and kernel and sum of matrix)
+                        k = (roi * kernel).sum()
+                        # Store convolved value in the current coordinate
+                        img_conv[y - pad, x - pad] = k
+
+                # Rescale convolved image to be in range [0, 255]
+                return rescale_intensity(img_conv, in_range=(0, 255)) * 255
+            else:
+                # Color - convolve each channel
+                img_conv = []
+                for ch in range(self.img.shape[2]):
+                    img_ch = self.img[:, :, ch]
+
+                    img_conv_ch = np.zeros((img_h, img_w))
+                    for y in np.arange(pad, img_h + pad):
+                        for x in np.arange(pad, img_w + pad):
+                            # Extract region of interest (ROI) of the image by extracting the center region
+                            roi = img_ch[y - pad:y + pad + 1, x - pad:x + pad + 1]
+                            # Perform convolution (element-wise multiplication between ROI and kernel and sum of matrix)
+                            k = (roi * kernel).sum()
+                            # Store convolved value in the current coordinate
+                            img_conv_ch[y - pad, x - pad] = k
+
+                    # Rescale convolved image to be in range [0, 255]
+                    img_conv_ch = rescale_intensity(img_conv_ch, in_range=(0, 255)) * 255
+                    img_conv.append(img_conv_ch)
+
+                # Stack channels, clip them to [0, 255] and represent as uint8 (prevent invalid range)
+                return np.clip(np.stack(img_conv, axis=2), 0, 255).astype("uint8")
+
+        print("Error! Unknown convolution implementation!")
+        return self.img
+
     # Smooth (blur) current image
-    def smooth(self):
-        print("smooth")
-        img_smooth = self.img
+    def smooth(self, intensity=5):
+        if intensity < 3 or intensity % 2 == 0:
+            print("Error! Smooth intensity should be at least 3 and an odd integer!")
+
+        kernel = np.ones((intensity, intensity)) / intensity**2
+        img_smooth = self.convolve2d(kernel)
 
         self.plot_image(img_smooth)
         return img_smooth
 
     # Sharpen current image
-    def sharpen(self):
-        print("sharpen")
-        img_sharp = self.img
+    def sharpen(self, intensity=5):
+        if intensity < 5:
+            print("Warning! Sharpen intensity should be at least 5! Defaulting to 5!")
+
+        kernel = np.array((
+            [0, -1, 0],
+            [-1, max(intensity, 5), -1],
+            [0, -1, 0]))
+        img_sharp = self.convolve2d(kernel)
 
         self.plot_image(img_sharp)
         return img_sharp
 
     # Dilate current image
-    def dilate(self):
-        print("dilate")
-        img_dilate = self.img
+    def dilate(self, intensity=5):
+        if self.get_conv_impl() != "opencv":
+            print(" manual")
+            img_dilate = self.img
+        else:
+            kernel = np.ones((intensity, intensity))
+            img_dilate = cv2.dilate(self.img, kernel)
 
         self.plot_image(img_dilate)
         return img_dilate
 
     # Erode current image
-    def erode(self):
-        print("erode")
-        img_erode = self.img
+    def erode(self, intensity=5):
+        if self.get_conv_impl() != "opencv":
+            print(" manual")
+            img_erode = self.img
+        else:
+            kernel = np.ones((intensity, intensity))
+            img_erode = cv2.erode(self.img, kernel)
 
         self.plot_image(img_erode)
         return img_erode
 
     # Detect edges on current image
-    def detect_edges(self, kernel=[]):
-        print("detect edges")
-        img_edges = self.img
+    def detect_edges(self, intensity=5):
+        if intensity < 4:
+            print("Warning! Edge detection intensity should be at least 4! Defaulting to 4!")
+
+        kernel = np.array((
+            [0, 1, 0],
+            [1, -max(intensity, 4), 1],
+            [0, 1, 0]))
+        img_edges = self.convolve2d(kernel)
 
         self.plot_image(img_edges)
         return img_edges
